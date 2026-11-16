@@ -163,7 +163,7 @@ app/
     app.py                   FastAPI routes: webhook, cron, admin, health
     security.py              constant-time secret checks
 scripts/                     migrations, webhook setup, daily report, dev polling
-tests/                       116 tests against real PostgreSQL
+tests/                       117 tests against real PostgreSQL
 docs/DEPLOYMENT.md           guided external setup (Supabase, Telegram, Vercel)
 docs/DATABASE.md             schema reference
 ```
@@ -221,7 +221,8 @@ python scripts/set_webhook.py https://<your-host>/api/telegram/webhook
 | `CRON_SECRET` | yes | ≥16 chars; protects `/api/cron/*` and `/api/admin/*` |
 | `APP_TIMEZONE` | no | default `Africa/Nouakchott` (UTC+0, no DST) |
 | `DEFAULT_CURRENCY` | no | default `MRU` (Mauritanian ouguiya) |
-| `WEBHOOK_URL` | no | used by `/api/admin/setup-webhook` when no `?url=` is given |
+| `WEBHOOK_URL` | no | public webhook URL; with `AUTO_SETUP` it is registered automatically |
+| `AUTO_SETUP` | no | `true` = on the first request apply missing migrations and register `WEBHOOK_URL` (idempotent, safe on every cold start) |
 | `LOG_LEVEL` | no | default `INFO` |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | no | optional Supabase metadata, unused by the app |
 
@@ -266,7 +267,11 @@ Any other Telegram account that messages the bot gets “⛔ هذا البوت �
 
 ## 9. Webhook configuration
 
-After deployment:
+With `AUTO_SETUP=true` and `WEBHOOK_URL` set, **nothing to do**: the first
+request (health check or Telegram update) applies the migration if needed and
+registers the webhook + commands once, recording the URL in `app_settings`.
+
+Otherwise register it manually:
 
 ```bash
 curl -X POST "https://<your-app>/api/admin/setup-webhook" \
@@ -298,13 +303,14 @@ ignored (Telegram retries are safe).
    Vercel detects `api/index.py` (FastAPI/ASGI) and installs `requirements.txt`.
 3. Add every environment variable from §6 (Production + Preview).
 4. Deploy, then open `https://<app>/api/health` → `{"status":"ok","database":"up"}`.
-5. Register the webhook (§9).
-6. The daily report is scheduled by `vercel.json`:
+   With `AUTO_SETUP=true` the schema and webhook were already handled on that
+   request (see §9).
+5. The daily report is scheduled by `vercel.json`:
    `{"path": "/api/cron/daily-report", "schedule": "0 8 * * *"}` — Vercel Cron
    runs in **UTC**, and Mauritania is UTC+0 all year, so 08:00 UTC = 08:00
    Nouakchott. Vercel sends `Authorization: Bearer $CRON_SECRET` automatically.
    If you change the report time in the bot settings, change the cron schedule too.
-7. `maxDuration` is set to 60 s in `vercel.json`; lower it if your plan requires.
+6. `maxDuration` is set to 60 s in `vercel.json`; lower it if your plan requires.
 
 ### Any Docker host (Render, Fly.io, VPS)
 
@@ -342,7 +348,7 @@ idempotent, so a late or repeated invocation never produces two reports.
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest            # 116 tests, real PostgreSQL via embedded pgserver
+python -m pytest            # 117 tests, real PostgreSQL via embedded pgserver
 ```
 
 Coverage (all executed, not asserted on paper):
@@ -354,11 +360,11 @@ Coverage (all executed, not asserted on paper):
 | `test_database.py` | schema constraints, one active tenant per apartment, archiving, edits don't reset cycles |
 | `test_payments.py` | atomic registration, duplicate confirmation, history after archive, month-end rollover |
 | `test_daily_report.py` | counts, today vs month totals, timezone, one-per-date, failure + retry, no data mutation |
-| `test_web.py` | webhook secret rejection, unauthorized user rejection, duplicate update, cron secret, setup-webhook, health/misconfiguration, schema-missing detection + `/api/admin/migrate` |
+| `test_web.py` | webhook secret rejection, unauthorized user rejection, duplicate update, cron secret, setup-webhook, health/misconfiguration, schema-missing detection + `/api/admin/migrate` + `AUTO_SETUP` bootstrap |
 | `test_bot_flow.py` | full owner journey through real updates: building → apartment → tenant → payment → duplicate tap → reports → search → archive |
 | `test_config.py` | missing/invalid env vars reported together, DSN redaction |
 
-Last run: **116 passed** (`python -m pytest`).
+Last run: **117 passed** (`python -m pytest`).
 
 ---
 

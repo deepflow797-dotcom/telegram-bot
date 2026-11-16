@@ -8,7 +8,7 @@ in order; each step tells you exactly what to copy and where it goes.
 
 - [x] Full implementation (bot, database layer, reports, webhook, cron endpoint)
 - [x] SQL migrations (`app/db/migrations/0001_init.sql`)
-- [x] 116 automated tests against a real PostgreSQL instance — all passing
+- [x] 117 automated tests against a real PostgreSQL instance — all passing
 - [x] Vercel configuration (`vercel.json`, `api/index.py`, `requirements.txt`)
 - [x] Docker alternative (`Dockerfile`)
 - [x] Helper scripts: migrations, webhook setup, daily report, local polling
@@ -96,6 +96,8 @@ in order; each step tells you exactly what to copy and where it goes.
    | `TELEGRAM_WEBHOOK_SECRET` | step 2.5 |
    | `DATABASE_URL` | step 1.5 |
    | `CRON_SECRET` | step 2.5 |
+   | `WEBHOOK_URL` | `https://<your-app>.vercel.app/api/telegram/webhook` |
+   | `AUTO_SETUP` | `true` |
    | `APP_TIMEZONE` | `Africa/Nouakchott` |
    | `DEFAULT_CURRENCY` | `MRU` (or `USD`, `EUR`, …) |
 
@@ -110,7 +112,11 @@ $CRON_SECRET` automatically.
 
 ## Step 4 — Register the webhook
 
-Either from a browser/curl:
+If you set `AUTO_SETUP=true` (recommended), this step is already done: the first
+request to `https://<your-app>.vercel.app/api/health` applied the schema and
+registered the webhook. Verify with `/api/admin/webhook-info`.
+
+Otherwise, either from a browser/curl:
 
 ```bash
 curl -X POST "https://<your-app>.vercel.app/api/admin/setup-webhook" \

@@ -310,3 +310,46 @@ async def test_schema_health_and_migration_endpoint(postgres_dsn) -> None:
             # idempotent
             again = await client.post("/api/admin/migrate", headers=CRON_HEADERS)
             assert again.json()["applied"] == []
+
+
+async def test_auto_setup_migrates_and_registers_webhook_once(postgres_dsn) -> None:
+    """AUTO_SETUP=true brings a brand-new deployment to a working state."""
+    import uuid
+    import psycopg
+
+    name = f"auto_{uuid.uuid4().hex[:8]}"
+    async with await psycopg.AsyncConnection.connect(postgres_dsn, autocommit=True) as conn:
+        await conn.execute(f'CREATE DATABASE "{name}"')
+    fresh_dsn = postgres_dsn.replace("/postgres?", f"/{name}?")
+    env = {
+        **TEST_ENV,
+        "DATABASE_URL": fresh_dsn,
+        "AUTO_SETUP": "true",
+        "WEBHOOK_URL": "https://rental.example.vercel.app/api/telegram/webhook",
+    }
+    cfg = Settings.from_env(env)
+
+    first_app = create_app(cfg)
+    first_session = attach_fake_session(first_app)
+    async with first_app.router.lifespan_context(first_app):
+        transport = httpx.ASGITransport(app=first_app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            health = await client.get("/api/health")
+            assert health.status_code == 200
+            assert health.json()["schema"] == "ready"
+            assert health.json()["auto_setup"] is True
+
+    names = [call[0] for call in first_session.calls]
+    assert names.count("SetWebhook") == 1
+    set_webhook = next(call[1] for call in first_session.calls if call[0] == "SetWebhook")
+    assert set_webhook["url"] == cfg.webhook_url
+    assert set_webhook["secret_token"] == TEST_ENV["TELEGRAM_WEBHOOK_SECRET"]
+
+    # a second cold start must not register the webhook again
+    second_app = create_app(cfg)
+    second_session = attach_fake_session(second_app)
+    async with second_app.router.lifespan_context(second_app):
+        transport = httpx.ASGITransport(app=second_app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            assert (await client.get("/api/health")).status_code == 200
+    assert [call[0] for call in second_session.calls].count("SetWebhook") == 0

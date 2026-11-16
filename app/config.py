@@ -38,6 +38,9 @@ class Settings:
     default_currency: str = DEFAULT_CURRENCY
     webhook_url: str | None = None
     log_level: str = "INFO"
+    # When true, the first request migrates the database (if needed) and
+    # registers TELEGRAM_WEBHOOK_URL-less WEBHOOK_URL with Telegram.
+    auto_setup: bool = False
     # Optional: kept for documentation / future Supabase REST usage.
     supabase_url: str | None = None
     supabase_service_role_key: str | None = None
@@ -122,6 +125,7 @@ class Settings:
             default_currency=currency,
             webhook_url=(get("WEBHOOK_URL") or None),
             log_level=(get("LOG_LEVEL") or "INFO").upper(),
+            auto_setup=(get("AUTO_SETUP") or "false").lower() in {"1", "true", "yes", "on"},
             supabase_url=(get("SUPABASE_URL") or None),
             supabase_service_role_key=(get("SUPABASE_SERVICE_ROLE_KEY") or None),
         )

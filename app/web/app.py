@@ -8,6 +8,7 @@ The app is serverless-friendly:
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import datetime as dt
 import logging
@@ -54,6 +55,36 @@ class Runtime:
     async def start(self) -> None:
         await self.db.open()
 
+    async def bootstrap(self) -> None:
+        """Optional zero-touch setup (AUTO_SETUP=true): schema + webhook.
+
+        Idempotent and safe to call on every cold start:
+        * migrations only run when the schema is missing,
+        * the webhook is only registered when the stored URL differs.
+        """
+        cfg = self.cfg
+        if not cfg.auto_setup:
+            return
+        if not await self.db.schema_ready():
+            from app.db.migrate import apply_migrations
+
+            applied = await apply_migrations(cfg.database_url)
+            log_event(logger, "auto-migration finished", versions=applied)
+        if not cfg.webhook_url:
+            return
+        current = await repo.get_app_setting(self.db, "webhook_url")
+        if current == cfg.webhook_url:
+            return
+        ok = await self.bot.set_webhook(
+            url=cfg.webhook_url,
+            secret_token=cfg.telegram_webhook_secret,
+            allowed_updates=ALLOWED_UPDATES,
+            drop_pending_updates=False,
+        )
+        await register_bot_commands(self.bot)
+        await repo.set_app_setting(self.db, "webhook_url", cfg.webhook_url)
+        log_event(logger, "webhook auto-registered", url=cfg.webhook_url, ok=bool(ok))
+
     async def stop(self) -> None:
         await self.db.close()
         await self.bot.session.close()
@@ -65,6 +96,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     runtime: Runtime | None = getattr(app.state, "runtime", None)
     if runtime is not None:
         await runtime.start()
+        try:
+            await asyncio.wait_for(runtime.bootstrap(), timeout=30)
+        except Exception:  # noqa: BLE001 - never block serving requests
+            logger.exception("bootstrap step failed; use /api/admin/migrate or setup-webhook")
     try:
         yield
     finally:
@@ -140,6 +175,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "schema": "ready" if schema_ready else "missing",
             "timezone": runtime.cfg.app_timezone,
             "today": today_of(runtime.cfg).isoformat(),
+            "auto_setup": runtime.cfg.auto_setup,
         }
         if db_ok and not schema_ready:
             body["hint"] = (
@@ -243,6 +279,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             drop_pending_updates=False,
         )
         await register_bot_commands(runtime.bot)
+        await repo.set_app_setting(runtime.db, "webhook_url", url)
         info = await runtime.bot.get_webhook_info()
         log_event(logger, "webhook configured", url=url, ok=bool(ok))
         return {

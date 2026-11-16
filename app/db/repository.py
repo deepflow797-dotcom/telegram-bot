@@ -263,6 +263,10 @@ async def get_app_settings(db: Database) -> dict[str, str]:
     return settings
 
 
+async def get_app_setting(db: Database, key: str) -> str | None:
+    return await db.fetch_value("SELECT value FROM app_settings WHERE key = %s", (key,))
+
+
 async def set_app_setting(db: Database, key: str, value: str) -> None:
     await db.execute(
         """

@@ -213,3 +213,24 @@ INSERT INTO app_settings (key, value) VALUES
     ('report_time', '08:00'),
     ('upcoming_days', '3')
 ON CONFLICT (key) DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- Row Level Security (defence in depth).
+--
+-- The bot connects as the table owner (DATABASE_URL), and owners bypass RLS.
+-- Supabase's public Data API understands anon / authenticated keys; because no
+-- policy is created below, those roles can read and write nothing. This keeps
+-- the rental data unreachable through PostgREST even if an anon key leaks.
+-- ---------------------------------------------------------------------------
+ALTER TABLE buildings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE apartments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tenants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payment_allocations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pending_payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE daily_reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE processed_updates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bot_fsm_states ENABLE ROW LEVEL SECURITY;
+ALTER TABLE schema_migrations ENABLE ROW LEVEL SECURITY;
