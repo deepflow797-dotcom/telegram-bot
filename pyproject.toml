@@ -7,16 +7,14 @@ name = "rental-telegram-bot"
 version = "1.0.0"
 description = "Arabic Telegram bot for managing rental properties, tenants and payments"
 requires-python = ">=3.11,<3.13"
-# Vercel installs dependencies from this list (it prefers pyproject.toml over
-# requirements.txt), so it must mirror requirements.txt. Extras are not applied
-# by every installer, therefore psycopg's binary/pool extras are listed
-# explicitly instead of using ``psycopg[binary,pool]``.
+# Vercel installs dependencies from this list with `uv` (it prefers
+# pyproject.toml over requirements.txt), so it grows with requirements.txt.
+# `uvicorn` is not needed on serverless hosts; it stays in requirements.txt for
+# Docker/local use.
 dependencies = [
   "aiogram==3.32.0",
   "fastapi==0.163.1",
-  "psycopg==3.3.9",
-  "psycopg-binary==3.3.9",
-  "psycopg-pool==3.3.9",
+  "psycopg[binary,pool]==3.3.9",
 ]
 
 [tool.setuptools.packages.find]
