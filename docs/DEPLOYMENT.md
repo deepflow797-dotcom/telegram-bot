@@ -86,7 +86,10 @@ in order; each step tells you exactly what to copy and where it goes.
 1. Open <https://vercel.com/new> and import this GitHub repository
    (`deepflow797-dotcom/telegram-bot`).
 2. Framework preset: **Other**. Leave build/output settings empty — Vercel
-   detects `api/index.py` and installs `requirements.txt`.
+   detects `api/index.py` and installs the dependencies declared in
+   `pyproject.toml` (Vercel prefers it over `requirements.txt`; both files list
+   the same packages, and `psycopg-binary`/`psycopg-pool` are declared
+   explicitly because extras are not guaranteed to be installed).
 3. **Environment Variables** (Production and Preview) — add exactly:
 
    | Name | Value |
@@ -167,6 +170,8 @@ schedule in `vercel.json`; update it (UTC) and redeploy when you change the time
 
 | Symptom | Fix |
 | --- | --- |
+| `/api/health` → `404: NOT_FOUND` | the project is not routing to the function: `vercel.json` must keep the `rewrites` rule `/(.*) → /api/index?__path=/$1`, and the deployment must be the *Production* one on branch `main` |
+| `500: FUNCTION_INVOCATION_FAILED` | dependencies were not installed (Vercel reads `pyproject.toml` first) or the app cannot boot; the JSON body of the response contains the redacted traceback |
 | `/api/health` 503 `misconfigured` | add the listed env var, redeploy |
 | `/api/health` 503 `database: down` | wrong `DATABASE_URL` password, or use the pooler string |
 | Bot silent | webhook not registered (step 4), or wrong `TELEGRAM_WEBHOOK_SECRET` |

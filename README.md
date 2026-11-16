@@ -161,9 +161,10 @@ app/
     daily_report.py          claim → render → send → record (idempotent)
   web/
     app.py                   FastAPI routes: webhook, cron, admin, health
+    routing.py               restores the client path after the Vercel single-function rewrite
     security.py              constant-time secret checks
 scripts/                     migrations, webhook setup, daily report, dev polling
-tests/                       117 tests against real PostgreSQL
+tests/                       130 tests against real PostgreSQL
 docs/DEPLOYMENT.md           guided external setup (Supabase, Telegram, Vercel)
 docs/DATABASE.md             schema reference
 ```
@@ -348,7 +349,7 @@ idempotent, so a late or repeated invocation never produces two reports.
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest            # 117 tests, real PostgreSQL via embedded pgserver
+python -m pytest            # 130 tests, real PostgreSQL via embedded pgserver
 ```
 
 Coverage (all executed, not asserted on paper):
@@ -363,8 +364,9 @@ Coverage (all executed, not asserted on paper):
 | `test_web.py` | webhook secret rejection, unauthorized user rejection, duplicate update, cron secret, setup-webhook, health/misconfiguration, schema-missing detection + `/api/admin/migrate` + `AUTO_SETUP` bootstrap |
 | `test_bot_flow.py` | full owner journey through real updates: building → apartment → tenant → payment → duplicate tap → reports → search → archive |
 | `test_config.py` | missing/invalid env vars reported together, DSN redaction |
+| `test_vercel_routing.py` | rewritten requests (`/api/index?__path=/api/health`) reach the real FastAPI route, direct function paths fall back to `/`, broken boots return a JSON diagnostic |
 
-Last run: **117 passed** (`python -m pytest`).
+Last run: **130 passed** (`python -m pytest`).
 
 ---
 
