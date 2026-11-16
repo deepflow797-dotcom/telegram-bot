@@ -1,0 +1,21 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 60,
+      "memory": 1024
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/daily-report",
+      "schedule": "0 8 * * *"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "no-store" }]
+    }
+  ]
+}

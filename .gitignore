@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Secrets & local environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local database / tools
+pgdata/
+.pgserver/
+*.sqlite3
+
+# Editors & OS
+.idea/
+.vscode/
+.DS_Store
+
+# Deployment artifacts
+.vercel/
+node_modules/
