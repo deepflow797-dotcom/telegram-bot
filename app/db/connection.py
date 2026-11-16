@@ -108,6 +108,15 @@ class Database:
             cur = await conn.execute(sql, params)
             return cur.rowcount
 
+    async def schema_ready(self) -> bool:
+        """True when the application tables exist (migrations applied)."""
+        try:
+            exists = await self.fetch_value("SELECT to_regclass('public.buildings') IS NOT NULL")
+            return bool(exists)
+        except Exception:  # pragma: no cover - depends on network
+            logger.exception("schema check failed")
+            return False
+
     async def ping(self) -> bool:
         try:
             await self.fetch_value("SELECT 1")

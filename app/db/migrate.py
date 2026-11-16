@@ -22,6 +22,7 @@ from psycopg import AsyncConnection
 from psycopg.rows import dict_row
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
+MIGRATION_LOCK_KEY = 773_314_201
 _VERSION_RE = re.compile(r"^(\d+)_")
 
 
@@ -39,20 +40,25 @@ async def apply_migrations(dsn: str, directory: Path = MIGRATIONS_DIR) -> list[s
             " version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())"
         )
         await conn.commit()
-        cur = await conn.execute("SELECT version FROM schema_migrations")
-        done = {row["version"] for row in await cur.fetchall()}
-        for path in discover_migrations(directory):
-            version = path.stem
-            if version in done:
-                continue
-            sql = path.read_text(encoding="utf-8")
-            async with conn.transaction():
-                await conn.execute(sql)
-                await conn.execute(
-                    "INSERT INTO schema_migrations (version) VALUES (%s) ON CONFLICT DO NOTHING",
-                    (version,),
-                )
-            applied.append(version)
+        # Serialize concurrent migration runs (e.g. several serverless instances).
+        await conn.execute("SELECT pg_advisory_lock(%s)", (MIGRATION_LOCK_KEY,))
+        try:
+            cur = await conn.execute("SELECT version FROM schema_migrations")
+            done = {row["version"] for row in await cur.fetchall()}
+            for path in discover_migrations(directory):
+                version = path.stem
+                if version in done:
+                    continue
+                sql = path.read_text(encoding="utf-8")
+                async with conn.transaction():
+                    await conn.execute(sql)
+                    await conn.execute(
+                        "INSERT INTO schema_migrations (version) VALUES (%s) ON CONFLICT DO NOTHING",
+                        (version,),
+                    )
+                applied.append(version)
+        finally:
+            await conn.execute("SELECT pg_advisory_unlock(%s)", (MIGRATION_LOCK_KEY,))
     return applied
 
 

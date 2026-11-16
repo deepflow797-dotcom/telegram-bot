@@ -8,7 +8,7 @@ in order; each step tells you exactly what to copy and where it goes.
 
 - [x] Full implementation (bot, database layer, reports, webhook, cron endpoint)
 - [x] SQL migrations (`app/db/migrations/0001_init.sql`)
-- [x] 115 automated tests against a real PostgreSQL instance — all passing
+- [x] 116 automated tests against a real PostgreSQL instance — all passing
 - [x] Vercel configuration (`vercel.json`, `api/index.py`, `requirements.txt`)
 - [x] Docker alternative (`Dockerfile`)
 - [x] Helper scripts: migrations, webhook setup, daily report, local polling
@@ -43,14 +43,25 @@ in order; each step tells you exactly what to copy and where it goes.
 
 5. Replace `YOUR-PASSWORD` with the password from step 2 → this is your
    `DATABASE_URL`.
-6. Apply the schema — either from your machine:
+6. Apply the schema. Two options — pick one:
+
+   *From your machine:*
 
    ```bash
+   pip install -r requirements.txt
    DATABASE_URL="<the string from step 5>" python -m app.db.migrate
    ```
 
-   …or wait until Vercel is deployed and run the migration from any shell with
-   `python -m app.db.migrate`. Expected output: `applied migrations: 0001_init`.
+   *After deploying (step 3), from a browser/curl — no password sharing needed:*
+
+   ```bash
+   curl -X POST "https://<your-app>.vercel.app/api/admin/migrate" \
+     -H "Authorization: Bearer <CRON_SECRET>"
+   ```
+
+   Expected result: `{"applied": ["0001_init"], "schema_ready": true}`.
+   `GET /api/health` shows `"schema": "ready"` afterwards; before that it returns
+   503 with `"schema": "missing"` and a hint.
 
 > Prefer a different Postgres? Any provider works — only `DATABASE_URL` matters.
 

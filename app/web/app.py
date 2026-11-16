@@ -132,13 +132,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 },
             )
         db_ok = await runtime.db.ping()
+        schema_ready = await runtime.db.schema_ready() if db_ok else False
+        healthy = db_ok and schema_ready
         body = {
-            "status": "ok" if db_ok else "degraded",
+            "status": "ok" if healthy else "degraded",
             "database": "up" if db_ok else "down",
+            "schema": "ready" if schema_ready else "missing",
             "timezone": runtime.cfg.app_timezone,
             "today": today_of(runtime.cfg).isoformat(),
         }
-        return JSONResponse(status_code=200 if db_ok else 503, content=body)
+        if db_ok and not schema_ready:
+            body["hint"] = (
+                "database schema is not installed: POST /api/admin/migrate "
+                "with the CRON_SECRET header (or run python -m app.db.migrate)"
+            )
+        return JSONResponse(status_code=200 if healthy else 503, content=body)
 
     @app.post("/api/telegram/webhook")
     async def telegram_webhook(request: Request) -> Any:
@@ -256,6 +264,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "last_error_message": info.last_error_message,
             "allowed_updates": info.allowed_updates,
         }
+
+    @app.api_route("/api/admin/migrate", methods=["GET", "POST"])
+    async def run_migrations(request: Request) -> Any:
+        """Apply pending SQL migrations (protected by CRON_SECRET)."""
+        runtime = _runtime_or_error(request)
+        require_cron_secret(request, runtime.cfg.cron_secret)
+        from app.db.migrate import apply_migrations
+
+        applied = await apply_migrations(runtime.cfg.database_url)
+        log_event(logger, "migrations applied", versions=applied)
+        return {"applied": applied, "schema_ready": await runtime.db.schema_ready()}
 
     @app.get("/api/admin/tenants")
     async def tenants_overview(request: Request) -> Any:

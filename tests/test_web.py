@@ -275,3 +275,38 @@ async def test_middleware_allows_owner() -> None:
 
     result = await middleware(handler, "event", {"event_from_user": _user(OWNER_ID)})
     assert result == "handled"
+
+
+async def test_schema_health_and_migration_endpoint(postgres_dsn) -> None:
+    """A fresh database reports a missing schema until migrations are applied."""
+    import uuid
+
+    import psycopg
+
+    name = f"fresh_{uuid.uuid4().hex[:8]}"
+    async with await psycopg.AsyncConnection.connect(postgres_dsn, autocommit=True) as conn:
+        await conn.execute(f'CREATE DATABASE "{name}"')
+    fresh_dsn = postgres_dsn.replace("/postgres?", f"/{name}?")
+    cfg = Settings.from_env({**TEST_ENV, "DATABASE_URL": fresh_dsn})
+    app = create_app(cfg)
+    async with app.router.lifespan_context(app):
+        attach_fake_session(app)
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            before = await client.get("/api/health")
+            assert before.status_code == 503
+            assert before.json()["schema"] == "missing"
+            assert "hint" in before.json()
+
+            assert (await client.post("/api/admin/migrate")).status_code == 401
+            applied = await client.post("/api/admin/migrate", headers=CRON_HEADERS)
+            assert applied.status_code == 200
+            assert applied.json()["applied"] == ["0001_init"]
+            assert applied.json()["schema_ready"] is True
+
+            after = await client.get("/api/health")
+            assert after.status_code == 200
+            assert after.json()["schema"] == "ready"
+            # idempotent
+            again = await client.post("/api/admin/migrate", headers=CRON_HEADERS)
+            assert again.json()["applied"] == []

@@ -163,7 +163,7 @@ app/
     app.py                   FastAPI routes: webhook, cron, admin, health
     security.py              constant-time secret checks
 scripts/                     migrations, webhook setup, daily report, dev polling
-tests/                       115 tests against real PostgreSQL
+tests/                       116 tests against real PostgreSQL
 docs/DEPLOYMENT.md           guided external setup (Supabase, Telegram, Vercel)
 docs/DATABASE.md             schema reference
 ```
@@ -234,8 +234,14 @@ only.
 ## 7. Database setup
 
 * Schema: `app/db/migrations/0001_init.sql` — see [docs/DATABASE.md](docs/DATABASE.md).
-* Apply with `python -m app.db.migrate` (idempotent, records versions in
-  `schema_migrations`).
+* Apply with `python -m app.db.migrate`, the script
+  `python scripts/apply_migrations.py`, or the protected endpoint
+  `POST /api/admin/migrate` (header `Authorization: Bearer $CRON_SECRET`) — handy
+  right after the first Vercel deploy, when only the platform knows the DSN.
+  All three are idempotent, run each file in a transaction, record versions in
+  `schema_migrations` and serialise concurrent runs with a Postgres advisory lock.
+* `/api/health` reports `"schema": "ready" | "missing"` so a deployment with an
+  un-migrated database is visible immediately.
 * For Supabase, use **Settings → Database → Connection string → Session pooler**
   as `DATABASE_URL`. The pool is created with `prepare_threshold=None` so it also
   works through the transaction pooler.
@@ -336,7 +342,7 @@ idempotent, so a late or repeated invocation never produces two reports.
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest            # 115 tests, real PostgreSQL via embedded pgserver
+python -m pytest            # 116 tests, real PostgreSQL via embedded pgserver
 ```
 
 Coverage (all executed, not asserted on paper):
@@ -348,11 +354,11 @@ Coverage (all executed, not asserted on paper):
 | `test_database.py` | schema constraints, one active tenant per apartment, archiving, edits don't reset cycles |
 | `test_payments.py` | atomic registration, duplicate confirmation, history after archive, month-end rollover |
 | `test_daily_report.py` | counts, today vs month totals, timezone, one-per-date, failure + retry, no data mutation |
-| `test_web.py` | webhook secret rejection, unauthorized user rejection, duplicate update, cron secret, setup-webhook, health/misconfiguration |
+| `test_web.py` | webhook secret rejection, unauthorized user rejection, duplicate update, cron secret, setup-webhook, health/misconfiguration, schema-missing detection + `/api/admin/migrate` |
 | `test_bot_flow.py` | full owner journey through real updates: building → apartment → tenant → payment → duplicate tap → reports → search → archive |
 | `test_config.py` | missing/invalid env vars reported together, DSN redaction |
 
-Last run: **115 passed** (`python -m pytest`).
+Last run: **116 passed** (`python -m pytest`).
 
 ---
 
