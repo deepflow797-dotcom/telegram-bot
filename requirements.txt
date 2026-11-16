@@ -1,0 +1,5 @@
+# Runtime dependencies (Vercel / Docker / local).
+aiogram==3.32.0
+fastapi==0.163.1
+psycopg[binary,pool]==3.3.9
+uvicorn[standard]==0.38.0
