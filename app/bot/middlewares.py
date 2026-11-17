@@ -14,6 +14,7 @@ Rules
 
 from __future__ import annotations
 
+import html
 import logging
 import time
 from collections.abc import Awaitable, Callable
@@ -70,8 +71,8 @@ class AccessMiddleware(BaseMiddleware):
     async def _contact_text(self, account: dict) -> str:
         settings = await platform.get_platform_settings(self.db)
         return texts.PENDING_REQUEST.format(
-            phone=settings.get("owner_phone", ""),
-            note=settings.get("contact_note", ""),
+            phone=html.escape(settings.get("owner_phone", "")),
+            note=html.escape(settings.get("contact_note", "")),
             account_id=account["id"],
         )
 
@@ -90,8 +91,10 @@ class AccessMiddleware(BaseMiddleware):
         bot = data.get("bot")
         if bot is None:
             return
-        who = account.get("display_name") or user.full_name
-        handle = f"@{account['username']}" if account.get("username") else "بدون يوزر"
+        who = html.escape(account.get("display_name") or user.full_name)
+        handle = (
+            f"@{html.escape(account['username'])}" if account.get("username") else "بدون يوزر"
+        )
         text = (
             "📥 <b>طلب تفعيل جديد</b>\n\n"
             f"الاسم: {who}\n"
@@ -200,8 +203,8 @@ class AccessMiddleware(BaseMiddleware):
         settings = await platform.get_platform_settings(self.db)
         left = platform.days_left(account, today)
         return texts.SUBSCRIPTION_FROZEN.format(
-            phone=settings.get("owner_phone", ""),
-            note=settings.get("contact_note", ""),
+            phone=html.escape(settings.get("owner_phone", "")),
+            note=html.escape(settings.get("contact_note", "")),
             account_id=account["id"],
             days=left if left is not None else 0,
         )

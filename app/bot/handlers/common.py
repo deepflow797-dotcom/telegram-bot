@@ -16,9 +16,12 @@ router = Router(name="common")
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message, state: FSMContext, db, cfg: Settings) -> None:
+async def cmd_start(
+    message: Message, state: FSMContext, db, cfg: Settings, is_owner: bool = False
+) -> None:
     await state.clear()
-    await message.answer(texts.WELCOME, reply_markup=kb.main_menu(), parse_mode="Markdown")
+    greeting = texts.WELCOME if is_owner else texts.WELCOME_ACCOUNT
+    await message.answer(greeting, reply_markup=kb.main_menu(), parse_mode="HTML")
     await message.answer(texts.MAIN_MENU_HINT, reply_markup=kb.main_inline())
 
 

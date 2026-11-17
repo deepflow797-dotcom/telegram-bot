@@ -373,3 +373,120 @@ async def test_auto_setup_migrates_and_registers_webhook_once(postgres_dsn) -> N
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             assert (await client.get("/api/health")).status_code == 200
     assert [call[0] for call in second_session.calls].count("SetWebhook") == 0
+
+
+def callback_update(data: str, user_id: int = OWNER_ID, update_id: int = 900) -> dict:
+    return {
+        "update_id": update_id,
+        "callback_query": {
+            "id": "cb-1",
+            "from": {"id": user_id, "is_bot": False, "first_name": "Owner"},
+            "chat_instance": "chat-instance-1",
+            "data": data,
+            "message": {
+                "message_id": 11,
+                "date": 1767225600,
+                "chat": {"id": user_id, "type": "private"},
+                "text": "📥 طلب تفعيل جديد",
+            },
+        },
+    }
+
+
+def _texts_to(session, chat_id: int) -> list[str]:
+    return [
+        str(call[1].get("text", ""))
+        for call in session.calls
+        if call[0] in {"SendMessage", "EditMessageText"} and call[1].get("chat_id") == chat_id
+    ]
+
+
+async def test_new_customer_request_is_approved_end_to_end(web, db) -> None:
+    """start → request → owner approves → customer activated with an empty dataset."""
+    from app.db import platform
+    from app.db.context import use_account
+    from app.db.repository import list_buildings
+
+    _, client, session = web
+    customer_id = 555111222
+
+    first = await client.post(
+        "/api/telegram/webhook",
+        json=message_update("/start", user_id=customer_id, update_id=201),
+        headers=WEBHOOK_HEADERS,
+    )
+    assert first.status_code == 200
+
+    owner_texts = _texts_to(session, OWNER_ID)
+    assert any("طلب تفعيل جديد" in text for text in owner_texts)
+    assert f"adm:ok:" in str(session.calls[0][1])
+
+    customer_texts = _texts_to(session, customer_id)
+    assert customer_texts and "22222222" in customer_texts[0]
+
+    rows = await platform.list_accounts(db, statuses=[platform.STATUS_PENDING])
+    assert len(rows) == 1
+    account_id = rows[0]["id"]
+
+    session.calls.clear()
+    approved = await client.post(
+        "/api/telegram/webhook",
+        json=callback_update(f"adm:ok:{account_id}:30", update_id=202),
+        headers=WEBHOOK_HEADERS,
+    )
+    assert approved.status_code == 200
+
+    stored = await platform.get_account(db, account_id)
+    assert stored["status"] == platform.STATUS_ACTIVE
+    assert stored["paid_until"] is not None
+    assert any("تم تفعيل البوت" in text for text in _texts_to(session, customer_id))
+
+    # the new account owns an empty, separate dataset
+    with use_account(account_id):
+        assert await list_buildings(db) == []
+
+    # and after activation the customer sees the normal menu, not the request screen
+    session.calls.clear()
+    again = await client.post(
+        "/api/telegram/webhook",
+        json=message_update("/start", user_id=customer_id, update_id=203),
+        headers=WEBHOOK_HEADERS,
+    )
+    assert again.status_code == 200
+    texts = _texts_to(session, customer_id)
+    assert texts and "مرحباً" in texts[0]
+    assert all("بالاشتراك" not in text for text in texts)
+
+
+async def test_rejected_customer_cannot_use_the_bot(web, db) -> None:
+    from app.db import platform
+
+    _, client, session = web
+    customer_id = 555333444
+
+    await client.post(
+        "/api/telegram/webhook",
+        json=message_update("/start", user_id=customer_id, update_id=301),
+        headers=WEBHOOK_HEADERS,
+    )
+    rows = await platform.list_accounts(db, statuses=[platform.STATUS_PENDING])
+    account_id = rows[0]["id"]
+
+    session.calls.clear()
+    await client.post(
+        "/api/telegram/webhook",
+        json=callback_update(f"adm:no:{account_id}", update_id=302),
+        headers=WEBHOOK_HEADERS,
+    )
+    assert any("رفض" in text for text in _texts_to(session, customer_id))
+
+    session.calls.clear()
+    await client.post(
+        "/api/telegram/webhook",
+        json=message_update("/start", user_id=customer_id, update_id=303),
+        headers=WEBHOOK_HEADERS,
+    )
+    texts = _texts_to(session, customer_id)
+    assert texts
+    assert all("مرحباً" not in text for text in texts)
+    assert any("رفض" in text for text in texts)
