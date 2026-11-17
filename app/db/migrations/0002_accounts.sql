@@ -46,6 +46,11 @@ CREATE TABLE IF NOT EXISTS platform_settings (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Defence in depth: the bot connects as the table owner (which bypasses RLS),
+-- while Supabase's anon / authenticated roles can reach nothing.
+ALTER TABLE accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE platform_settings ENABLE ROW LEVEL SECURITY;
+
 INSERT INTO platform_settings (key, value) VALUES
     ('owner_phone', '22222222'),
     ('contact_note', 'أرسل اسم المستخدم (اليوزر) الخاص بك لهذا الرقم، وسيتم تفعيل البوت لك، وستصلك رسالة تأكيد.')
@@ -218,6 +223,12 @@ BEGIN
         'upcoming_days', '3',
         'prepayment_prompt', 'true'
     );
+
+    -- LIKE does not copy row level security either: enable it per table so the
+    -- Supabase Data API (anon / authenticated) can still read nothing.
+    FOREACH t IN ARRAY data_tables LOOP
+        EXECUTE format('ALTER TABLE %I.%I ENABLE ROW LEVEL SECURITY', s, t);
+    END LOOP;
 
     EXECUTE format(
         'GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA %I TO public', s
