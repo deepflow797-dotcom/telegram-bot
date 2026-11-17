@@ -4,3 +4,4 @@ pytest-asyncio==1.2.0
 httpx==0.28.1
 pgserver==0.1.4
 ruff==0.14.4
+openpyxl==3.1.5

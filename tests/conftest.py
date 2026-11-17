@@ -6,6 +6,7 @@ import asyncio
 import tempfile
 from collections.abc import AsyncIterator
 
+import httpx
 import pgserver
 import pytest
 import pytest_asyncio
@@ -94,3 +95,19 @@ async def db(postgres_dsn: str) -> AsyncIterator[Database]:
 @pytest.fixture
 def settings() -> Settings:
     return Settings.from_env({**TEST_ENV, "DATABASE_URL": "postgresql://user:pass@localhost:5432/db"})
+
+
+@pytest_asyncio.fixture
+async def web(postgres_dsn, db):
+    """A live ASGI app with a fake Telegram session, sharing the test database."""
+    from app.config import Settings
+    from app.web.app import create_app
+    from tests.fake_bot import attach_fake_session
+
+    settings = Settings.from_env({**TEST_ENV, "DATABASE_URL": postgres_dsn})
+    app = create_app(settings)
+    async with app.router.lifespan_context(app):
+        session = attach_fake_session(app)
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            yield app, client, session

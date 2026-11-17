@@ -12,6 +12,7 @@ from aiogram.types import BotCommand
 from app.bot.handlers import (
     admin,
     common,
+    deletes,
     edits,
     errors,
     payments,
@@ -46,6 +47,7 @@ HANDLER_MODULES = [
     reports,
     search,
     settings,
+    deletes,
     errors,
 ]
 

@@ -13,17 +13,18 @@ registers it with two taps; the bot does the arithmetic and the reporting.
 
 | Area | Capabilities |
 | --- | --- |
-| Buildings | add, view, edit name/address, archive, occupancy counters |
-| Apartments | add (per building), view, edit number/floor, archive, occupancy status |
-| Tenants | add (building → apartment → details), edit any field, search, archive, profile with balance & history |
+| Buildings | add, view, edit name/address, archive, permanent delete (empty buildings only), occupancy counters |
+| Apartments | add (per building), view, edit number/floor, archive, permanent delete (no tenants), occupancy status |
+| Tenants | add (building → apartment → details), edit any field, search, archive, permanent delete (no payments), profile with balance & history |
 | Payments | full / partial / overpayment registration with a confirmation screen, immutable history, duplicate protection |
 | Rental cycle | automatic calendar-month cycle rollover on confirmed payment, month-end clamping, arrears accounting |
 | Statuses | covered, upcoming (≤ 3 days), due today, overdue, archived — derived from data, never stored by hand |
 | Daily report | 08:00 Africa/Nouakchott, summary + four tenant lists, one report per date, retries |
-| Reports on demand | today, month, payment history, overdue, upcoming, total revenue |
+| Reports on demand | today, month, payment history, overdue, upcoming, total revenue, **Excel export** |
 | Settings | default currency, report time, enable/disable daily report, bot info |
 | Accounts | multi-tenant: each Telegram account has its own isolated dataset, subscription and empty start |
 | Subscriptions | request → owner approves (30/90 days) → active; on expiry the account is frozen (data kept, renewal screen) |
+| Excel export | `📗 تصدير كل البيانات Excel` builds a real `.xlsx` (summary, buildings, apartments, tenants, payments, arrears) with numbers kept numeric and RTL sheets |
 | Security | per-account isolation, owner-only admin screens, secret-protected webhook/cron/admin endpoints, audit log |
 
 Everything in the chat is Arabic and button-driven — no commands required
@@ -140,6 +141,7 @@ app/
     rent.py                  statuses, balances, payment allocation (pure)
     reports.py               report data models + Arabic renderers
     formatting.py            money/date/status labels
+    xlsx.py                  dependency-free .xlsx writer (OOXML zip)
   db/
     migrations/0001_init.sql schema (buildings, apartments, tenants, payments,
                              allocations, pending payments, daily reports,
@@ -157,16 +159,17 @@ app/
     keyboards.py             all inline/reply keyboards
     views.py                 cards, receipts, success messages
     handlers/                common, properties, edits, tenants, payments,
-                             reports, search, settings, errors
+                             reports, search, settings, deletes, errors
   services/
     reports_data.py          report data collection (bot + cron share it)
     daily_report.py          claim → render → send → record (idempotent)
+    excel_export.py          builds the account's .xlsx workbook
   web/
     app.py                   FastAPI routes: webhook, cron, admin, health
     routing.py               restores the client path after the Vercel single-function rewrite
     security.py              constant-time secret checks
 scripts/                     migrations, webhook setup, daily report, dev polling
-tests/                       130 tests against real PostgreSQL
+tests/                       161 tests against real PostgreSQL
 docs/DEPLOYMENT.md           guided external setup (Supabase, Telegram, Vercel)
 docs/DATABASE.md             schema reference
 ```
@@ -338,7 +341,32 @@ idempotent, so a late or repeated invocation never produces two reports.
 
 ---
 
-## 11. Daily report
+## 11. Excel export
+
+`📊 التقارير → 📗 تصدير كل البيانات Excel` sends a real `.xlsx` workbook named
+`rentals-YYYY-MM-DD.xlsx`. Sheets: **ملخص / المباني / الشقق / المستأجرون /
+الدفعات / المتأخرات**. Money cells are numbers (so `SUM`/filters work in Excel or
+Sheets), sheets are `rightToLeft="1"` with a frozen header row, and the rows come
+from the account's own schema, so a customer's file never contains another
+account's data.
+
+The writer lives in `app/core/xlsx.py` and has **no third-party dependency** (a
+zip plus a handful of OOXML parts), keeping the Vercel bundle small; `openpyxl`
+is only a dev dependency, used by the tests to read the generated file back.
+
+### Archiving vs permanent delete
+
+Cards carry two destructive actions:
+
+* `🗄 أرشفة` — soft delete (`is_active = false`, `archived_at`): hidden from
+  lists, everything kept, payments and history intact. This is the normal path.
+* `🗑 حذف نهائياً` — row delete with a confirmation step and dependency guards:
+  a building with apartments, an apartment with any tenant (even archived), or a
+  tenant with payments cannot be deleted. Every delete is written to `audit_log`.
+
+---
+
+## 12. Daily report
 
 * Time: **08:00 Africa/Nouakchott** (UTC+0), configurable in ⚙️ الإعدادات.
 * Content: active tenants, covered / due-today / overdue / upcoming counts,
@@ -353,7 +381,7 @@ idempotent, so a late or repeated invocation never produces two reports.
 
 ---
 
-## 12. Tests
+## 13. Tests
 
 ```bash
 pip install -r requirements-dev.txt
@@ -378,7 +406,7 @@ Last run: **130 passed** (`python -m pytest`).
 
 ---
 
-## 13. Troubleshooting
+## 14. Troubleshooting
 
 | Symptom | Cause / fix |
 | --- | --- |
@@ -393,7 +421,7 @@ Last run: **130 passed** (`python -m pytest`).
 
 ---
 
-## 14. Security notes
+## 15. Security notes
 
 * Access is enforced in an aiogram **outer** middleware, before any handler or
   query runs. Unknown users get a request screen only; pending, rejected and
@@ -418,7 +446,7 @@ Last run: **130 passed** (`python -m pytest`).
 
 ---
 
-## 15. Accounts & subscriptions (multi-tenant)
+## 16. Accounts & subscriptions (multi-tenant)
 
 The bot is a product, not a personal tool: one deployment serves many customers.
 

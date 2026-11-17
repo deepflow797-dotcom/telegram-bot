@@ -157,6 +157,53 @@ async def update_tenant(db: Database, tenant_id: int, **fields: Any) -> dict | N
     return await get_tenant(db, tenant_id)
 
 
+async def tenant_dependency_counts(db: Database, tenant_id: int) -> dict[str, int]:
+    """Payment history that blocks a permanent delete."""
+    row = await db.fetch_one(
+        """
+        SELECT (SELECT count(*) FROM payments p WHERE p.tenant_id = %s) AS payments,
+               (SELECT count(*) FROM payment_allocations pa WHERE pa.tenant_id = %s) AS allocations
+        """,
+        (tenant_id, tenant_id),
+    )
+    return {
+        "payments": int((row or {}).get("payments") or 0),
+        "allocations": int((row or {}).get("allocations") or 0),
+    }
+
+
+async def delete_tenant(db: Database, tenant_id: int) -> dict | None:
+    """Permanently delete a tenant that has no payment history.
+
+    A tenant with payments is never deleted (the money trail must survive);
+    archive it instead.
+    """
+    async with db.transaction() as conn:
+        cur = await conn.execute(
+            """
+            DELETE FROM tenants t
+             WHERE t.id = %s
+               AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.tenant_id = t.id)
+               AND NOT EXISTS (SELECT 1 FROM payment_allocations pa WHERE pa.tenant_id = t.id)
+            RETURNING *
+            """,
+            (tenant_id,),
+        )
+        deleted = await cur.fetchone()
+        if deleted is not None:
+            await conn.execute(
+                """
+                UPDATE apartments
+                   SET occupancy_status = 'vacant', updated_at = now()
+                 WHERE id = %s AND NOT EXISTS (
+                       SELECT 1 FROM tenants t2 WHERE t2.apartment_id = apartments.id AND t2.is_active
+                 )
+                """,
+                (deleted["apartment_id"],),
+            )
+    return deleted
+
+
 async def archive_tenant(db: Database, tenant_id: int) -> dict | None:
     """Archive a tenant, freeing the apartment when no other active tenant uses it."""
     async with db.transaction() as conn:

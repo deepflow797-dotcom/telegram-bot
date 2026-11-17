@@ -123,6 +123,15 @@ def trial_menu() -> InlineKeyboardMarkup:
     )
 
 
+def confirm_delete(kind: str, entity_id: int, back: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [_btn("✅ نعم، احذف نهائياً", f"d:ok:{kind}:{entity_id}")],
+            [_btn("🔙 إلغاء", back)],
+        ]
+    )
+
+
 def check_status() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[[_btn("🔄 تحقق من التفعيل", "acc:check")]]
@@ -164,6 +173,7 @@ def reports_menu() -> InlineKeyboardMarkup:
             [_btn("📅 تقرير اليوم", "r:today"), _btn("📆 تقرير الشهر", "r:month")],
             [_btn("🧾 سجل المدفوعات", "r:history"), _btn("⚠️ المتأخرات", "r:overdue")],
             [_btn("💰 إجمالي الإيرادات", "r:revenue"), _btn("📤 إرسال التقرير اليومي", "r:send")],
+            [_btn("📗 تصدير كل البيانات Excel", "r:xlsx")],
             [_btn("🔙 القائمة الرئيسية", "m:main")],
         ]
     )
@@ -215,6 +225,7 @@ def building_card(building_id: int, is_active: bool = True) -> InlineKeyboardMar
     ]
     if is_active:
         rows.append([_btn("🗄 أرشفة المبنى", f"b:arch:{building_id}")])
+    rows.append([_btn("🗑 حذف المبنى نهائياً", f"d:ask:b:{building_id}")])
     rows.append([_btn("🔙 رجوع", "b:list")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -245,6 +256,7 @@ def apartment_card(apartment: dict) -> InlineKeyboardMarkup:
     rows.append([_btn("📝 تعديل الوصف", f"a:edit:description:{apartment['id']}")])
     if apartment.get("is_active"):
         rows.append([_btn("🗄 أرشفة الشقة", f"a:arch:{apartment['id']}")])
+    rows.append([_btn("🗑 حذف الشقة نهائياً", f"d:ask:a:{apartment['id']}")])
     rows.append([_btn("🔙 رجوع", f"b:apts:{apartment['building_id']}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -306,6 +318,7 @@ def tenant_profile(tenant: dict) -> InlineKeyboardMarkup:
     ]
     if tenant.get("is_active"):
         rows.insert(2, [_btn("🗄 أرشفة المستأجر", f"t:arch:{tenant_id}")])
+    rows.append([_btn("🗑 حذف المستأجر نهائياً", f"d:ask:t:{tenant_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

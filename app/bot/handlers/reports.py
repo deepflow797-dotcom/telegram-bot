@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from aiogram import F, Router
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
 from app.bot import keyboards as kb
 from app.bot.utils import (
@@ -33,6 +33,7 @@ from app.core.reports import (
 )
 from app.db import payments as payments_repo
 from app.services.daily_report import keyboard_for_block, run_daily_report
+from app.services.excel_export import build_export
 from app.services.reports_data import (
     build_daily_report_for,
     build_monthly_report_for,
@@ -42,6 +43,32 @@ from app.services.reports_data import (
 
 logger = logging.getLogger(__name__)
 router = Router(name="reports")
+
+
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+@router.callback_query(F.data == "r:xlsx")
+async def export_excel(callback: CallbackQuery, db, cfg: Settings, app_settings: dict) -> None:
+    """Send the account's whole dataset as an .xlsx workbook."""
+    await answer_callback(callback, "جارٍ تجهيز الملف…")
+    upcoming = int(app_settings.get("upcoming_days", "3") or 3)
+    currency = (app_settings.get("currency") or cfg.default_currency).strip()
+    data, filename = await build_export(
+        db, tz=cfg.tz, today=today_of(cfg), currency=currency, upcoming_days=upcoming
+    )
+    message = callback.message
+    if not isinstance(message, Message):
+        return
+    await message.answer_document(
+        BufferedInputFile(data, filename=filename),
+        caption=(
+            "📗 <b>ملف Excel بكل بياناتك</b>\n\n"
+            "الأوراق: ملخص، المباني، الشقق، المستأجرون، الدفعات، المتأخرات.\n"
+            f"التاريخ: <b>{today_of(cfg).isoformat()}</b>"
+        ),
+        parse_mode="HTML",
+    )
 
 
 @router.callback_query(F.data == "r:today")

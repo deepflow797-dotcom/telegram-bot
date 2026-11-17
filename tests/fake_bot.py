@@ -58,6 +58,8 @@ class FakeSession(BaseSession):
 
         if name == "SendMessage":
             return _message(payload.get("text"), chat_id if isinstance(chat_id, int) else 0)
+        if name == "SendDocument":
+            return _message(payload.get("caption"), chat_id if isinstance(chat_id, int) else 0)
         if name in {"EditMessageText", "EditMessageReplyMarkup"}:
             return _message(payload.get("text"), chat_id if isinstance(chat_id, int) else 0)
         if name == "GetWebhookInfo":

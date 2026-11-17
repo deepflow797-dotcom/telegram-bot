@@ -110,6 +110,38 @@ async def archive_building(db: Database, building_id: int) -> dict | None:
         return await cur.fetchone()
 
 
+async def building_dependency_counts(db: Database, building_id: int) -> dict[str, int]:
+    """How many apartments / tenants still point at this building."""
+    row = await db.fetch_one(
+        """
+        SELECT (SELECT count(*) FROM apartments a WHERE a.building_id = %s) AS apartments,
+               (SELECT count(*) FROM tenants t
+                  JOIN apartments a ON a.id = t.apartment_id
+                 WHERE a.building_id = %s) AS tenants
+        """,
+        (building_id, building_id),
+    )
+    return {
+        "apartments": int((row or {}).get("apartments") or 0),
+        "tenants": int((row or {}).get("tenants") or 0),
+    }
+
+
+async def delete_building(db: Database, building_id: int) -> dict | None:
+    """Permanently delete a building that has no apartments left."""
+    async with db.transaction() as conn:
+        cur = await conn.execute(
+            """
+            DELETE FROM buildings b
+             WHERE b.id = %s
+               AND NOT EXISTS (SELECT 1 FROM apartments a WHERE a.building_id = b.id)
+            RETURNING *
+            """,
+            (building_id,),
+        )
+        return await cur.fetchone()
+
+
 async def building_active_tenants_count(db: Database, building_id: int) -> int:
     value = await db.fetch_value(
         """
@@ -237,6 +269,38 @@ async def archive_apartment(db: Database, apartment_id: int) -> dict | None:
             (apartment_id,),
         )
     return await get_apartment(db, apartment_id)
+
+
+async def apartment_dependency_counts(db: Database, apartment_id: int) -> dict[str, int]:
+    """Tenants that still point at this apartment (active or archived)."""
+    row = await db.fetch_one(
+        """
+        SELECT (SELECT count(*) FROM tenants t WHERE t.apartment_id = %s) AS tenants,
+               (SELECT count(*) FROM payments p
+                  JOIN tenants t ON t.id = p.tenant_id
+                 WHERE t.apartment_id = %s) AS payments
+        """,
+        (apartment_id, apartment_id),
+    )
+    return {
+        "tenants": int((row or {}).get("tenants") or 0),
+        "payments": int((row or {}).get("payments") or 0),
+    }
+
+
+async def delete_apartment(db: Database, apartment_id: int) -> dict | None:
+    """Permanently delete an apartment that has no tenants left."""
+    async with db.transaction() as conn:
+        cur = await conn.execute(
+            """
+            DELETE FROM apartments a
+             WHERE a.id = %s
+               AND NOT EXISTS (SELECT 1 FROM tenants t WHERE t.apartment_id = a.id)
+            RETURNING *
+            """,
+            (apartment_id,),
+        )
+        return await cur.fetchone()
 
 
 async def apartment_active_tenant(db: Database, apartment_id: int) -> dict | None:

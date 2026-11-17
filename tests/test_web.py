@@ -6,7 +6,6 @@ import datetime as dt
 from decimal import Decimal
 
 import httpx
-import pytest_asyncio
 from aiogram.types import Message, User
 
 from app.config import ConfigError, Settings
@@ -31,17 +30,6 @@ def message_update(text: str, user_id: int = OWNER_ID, update_id: int = 100) -> 
             "text": text,
         },
     }
-
-
-@pytest_asyncio.fixture
-async def web(postgres_dsn, db):
-    cfg = Settings.from_env({**TEST_ENV, "DATABASE_URL": postgres_dsn})
-    app = create_app(cfg)
-    async with app.router.lifespan_context(app):
-        session = attach_fake_session(app)
-        transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-            yield app, client, session
 
 
 async def test_health_endpoint(web) -> None:
