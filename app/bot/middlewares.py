@@ -23,6 +23,7 @@ from typing import Any
 from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, TelegramObject, User
 
+from app.bot import policy as bot_policy
 from app.bot import texts
 from app.bot.menu_context import reset_owner_menu, set_owner_menu
 from app.bot.utils import today as today_of
@@ -288,7 +289,11 @@ class ContextMiddleware(BaseMiddleware):
         except Exception:
             logger.exception("failed to load app settings")
             data["app_settings"] = {}
-        return await handler(event, data)
+        token = bot_policy.set_policy(bot_policy.from_settings(data["app_settings"]))
+        try:
+            return await handler(event, data)
+        finally:
+            bot_policy.reset_policy(token)
 
 
 # Backwards-compatible alias (old name used by tests and docs).

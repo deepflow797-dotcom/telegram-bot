@@ -317,6 +317,8 @@ SETTING_DEFAULTS: dict[str, str] = {
     "report_enabled": "true",
     "report_time": "08:00",
     "upcoming_days": "3",
+    "allow_delete": "true",
+    "allow_archive": "true",
 }
 
 

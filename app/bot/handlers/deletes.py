@@ -16,6 +16,7 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
 from app.bot import keyboards as kb
+from app.bot import policy as bot_policy
 from app.bot.utils import answer_callback, edit_or_send
 from app.config import Settings
 from app.db import repository as repo
@@ -116,6 +117,16 @@ async def _ask_tenant(callback: CallbackQuery, db) -> None:
 
 @router.callback_query(F.data.startswith("d:ask:"))
 async def ask_delete(callback: CallbackQuery, db) -> None:
+    if not bot_policy.allow_delete():
+        await answer_callback(callback, "الحذف النهائي متوقف من الإعدادات", alert=True)
+        await edit_or_send(
+            callback,
+            "⛔️ الحذف النهائي متوقف في حسابك.\n\n"
+            "لتشغيله: ⚙️ الإعدادات ← 🗑 الحذف والأرشفة ← 🗑 الحذف النهائي.\n"
+            "تقدر تستخدم 🗄 الأرشفة بدلاً منه (تحفظ كل السجل).",
+            kb.settings_hint("s:delpol"),
+        )
+        return
     parts = (callback.data or "").split(":")
     kind = parts[2] if len(parts) > 3 else ""
     if kind == KIND_BUILDING:
@@ -212,6 +223,9 @@ async def _delete_tenant(callback: CallbackQuery, db, cfg: Settings, entity_id: 
 
 @router.callback_query(F.data.startswith("d:ok:"))
 async def confirm_delete(callback: CallbackQuery, db, cfg: Settings) -> None:
+    if not bot_policy.allow_delete():
+        await answer_callback(callback, "الحذف النهائي متوقف من الإعدادات", alert=True)
+        return
     parts = (callback.data or "").split(":")
     if len(parts) < 4:
         await answer_callback(callback, "طلب غير صحيح", alert=True)

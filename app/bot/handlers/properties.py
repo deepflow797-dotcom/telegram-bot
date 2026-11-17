@@ -10,6 +10,7 @@ from aiogram.types import CallbackQuery, Message
 from psycopg.errors import UniqueViolation
 
 from app.bot import keyboards as kb
+from app.bot import policy as bot_policy
 from app.bot import texts
 from app.bot.states import ApartmentForm, BuildingForm, EditForm
 from app.bot.utils import (
@@ -175,6 +176,15 @@ async def edit_building_field(callback: CallbackQuery, state: FSMContext, db) ->
 
 @router.callback_query(F.data.startswith("b:arch:"))
 async def archive_building_confirm(callback: CallbackQuery, db) -> None:
+    if not bot_policy.allow_archive():
+        await answer_callback(callback, "الأرشفة متوقفة من الإعدادات", alert=True)
+        await edit_or_send(
+            callback,
+            "⛔️ الأرشفة متوقفة في حسابك.\n\n"
+            "لتشغيلها: ⚙️ الإعدادات ← 🗑 الحذف والأرشفة ← 🗄 الأرشفة.",
+            kb.settings_hint("s:delpol"),
+        )
+        return
     building_id = parse_int(callback.data.split(":")[2])
     building = await repo.get_building(db, building_id)
     await answer_callback(callback)
@@ -191,6 +201,9 @@ async def archive_building_confirm(callback: CallbackQuery, db) -> None:
 
 @router.callback_query(F.data.startswith("b:archok:"))
 async def archive_building(callback: CallbackQuery, db, cfg: Settings) -> None:
+    if not bot_policy.allow_archive():
+        await answer_callback(callback, "الأرشفة متوقفة من الإعدادات", alert=True)
+        return
     building_id = parse_int(callback.data.split(":")[2])
     active = await repo.building_active_tenants_count(db, building_id)
     if active:
@@ -271,6 +284,15 @@ async def edit_apartment_field(callback: CallbackQuery, state: FSMContext, db) -
 
 @router.callback_query(F.data.startswith("a:arch:"))
 async def archive_apartment_confirm(callback: CallbackQuery, db) -> None:
+    if not bot_policy.allow_archive():
+        await answer_callback(callback, "الأرشفة متوقفة من الإعدادات", alert=True)
+        await edit_or_send(
+            callback,
+            "⛔️ الأرشفة متوقفة في حسابك.\n\n"
+            "لتشغيلها: ⚙️ الإعدادات ← 🗑 الحذف والأرشفة ← 🗄 الأرشفة.",
+            kb.settings_hint("s:delpol"),
+        )
+        return
     apartment_id = parse_int(callback.data.split(":")[2])
     apartment = await repo.get_apartment(db, apartment_id)
     await answer_callback(callback)
@@ -286,6 +308,9 @@ async def archive_apartment_confirm(callback: CallbackQuery, db) -> None:
 
 @router.callback_query(F.data.startswith("a:archok:"))
 async def archive_apartment(callback: CallbackQuery, db, cfg: Settings) -> None:
+    if not bot_policy.allow_archive():
+        await answer_callback(callback, "الأرشفة متوقفة من الإعدادات", alert=True)
+        return
     apartment_id = parse_int(callback.data.split(":")[2])
     tenant = await repo.apartment_active_tenant(db, apartment_id)
     if tenant:

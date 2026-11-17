@@ -9,6 +9,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from app.bot import keyboards as kb
+from app.bot import policy as bot_policy
 from app.bot import texts
 from app.bot.states import TenantForm
 from app.bot.utils import (
@@ -158,6 +159,15 @@ async def tenant_history(callback: CallbackQuery, db) -> None:
 
 @router.callback_query(F.data.startswith("t:arch:"))
 async def archive_confirm(callback: CallbackQuery, db) -> None:
+    if not bot_policy.allow_archive():
+        await answer_callback(callback, "الأرشفة متوقفة من الإعدادات", alert=True)
+        await edit_or_send(
+            callback,
+            "⛔️ الأرشفة متوقفة في حسابك.\n\n"
+            "لتشغيلها: ⚙️ الإعدادات ← 🗑 الحذف والأرشفة ← 🗄 الأرشفة.",
+            kb.settings_hint("s:delpol"),
+        )
+        return
     tenant_id = parse_int(callback.data.split(":")[2])
     tenant = await tenants_repo.get_tenant(db, tenant_id)
     await answer_callback(callback)
@@ -174,6 +184,9 @@ async def archive_confirm(callback: CallbackQuery, db) -> None:
 
 @router.callback_query(F.data.startswith("t:archok:"))
 async def archive_tenant(callback: CallbackQuery, db, cfg: Settings) -> None:
+    if not bot_policy.allow_archive():
+        await answer_callback(callback, "الأرشفة متوقفة من الإعدادات", alert=True)
+        return
     tenant_id = parse_int(callback.data.split(":")[2])
     tenant = await tenants_repo.archive_tenant(db, tenant_id)
     await answer_callback(callback, "تم الأرشفة")

@@ -141,6 +141,39 @@ async def toggle_report(callback: CallbackQuery, db, cfg: Settings) -> None:
     await _show_menu(callback, db, await repo.get_app_settings(db))
 
 
+async def _show_policy(callback: CallbackQuery, db) -> None:
+    settings = await repo.get_app_settings(db)
+    allow_delete = settings.get("allow_delete", "true") == "true"
+    allow_archive = settings.get("allow_archive", "true") == "true"
+    await edit_or_send(
+        callback,
+        texts.DELETE_POLICY_MENU,
+        kb.delete_policy_menu(allow_delete, allow_archive),
+    )
+
+
+@router.callback_query(F.data == "s:delpol")
+async def delete_policy(callback: CallbackQuery, db) -> None:
+    await answer_callback(callback)
+    await _show_policy(callback, db)
+
+
+@router.callback_query(F.data.startswith("s:delpol:"))
+async def toggle_delete_policy(callback: CallbackQuery, db, cfg: Settings) -> None:
+    choice = callback.data.split(":")[2]
+    key = "allow_delete" if choice == "del" else "allow_archive"
+    settings = await repo.get_app_settings(db)
+    new_value = "false" if settings.get(key, "true") == "true" else "true"
+    await repo.set_app_setting(db, key, new_value)
+    await repo.log_audit(
+        db, actor_id=cfg.owner_id, action=f"{key}_updated", details={"value": new_value}
+    )
+    label = "الحذف النهائي" if key == "allow_delete" else "الأرشفة"
+    state = "مفعّل ✅" if new_value == "true" else "متوقف ⛔️"
+    await answer_callback(callback, f"{label}: {state}")
+    await _show_policy(callback, db)
+
+
 @router.callback_query(F.data == "s:info")
 async def bot_info(callback: CallbackQuery, db, cfg: Settings, app_settings: dict) -> None:
     await answer_callback(callback)
@@ -158,6 +191,8 @@ async def bot_info(callback: CallbackQuery, db, cfg: Settings, app_settings: dic
         f"• العملة الافتراضية: {app_settings.get('currency', 'MRU')}\n"
         f"• وقت التقرير اليومي: {app_settings.get('report_time', '08:00')}\n"
         f"• التقرير اليومي: {'مفعّل ✅' if app_settings.get('report_enabled', 'true') == 'true' else 'متوقف ⛔️'}\n"
+        f"• الحذف النهائي: {'مفعّل ✅' if app_settings.get('allow_delete', 'true') == 'true' else 'متوقف ⛔️'}\n"
+        f"• الأرشفة: {'مفعّلة ✅' if app_settings.get('allow_archive', 'true') == 'true' else 'متوقفة ⛔️'}\n"
         f"• المالك: `{cfg.owner_id}`\n\n"
         f"📤 *آخر التقارير اليومية*\n{report_lines}"
     )

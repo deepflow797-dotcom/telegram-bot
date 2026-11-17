@@ -21,7 +21,7 @@ registers it with two taps; the bot does the arithmetic and the reporting.
 | Statuses | covered, upcoming (≤ 3 days), due today, overdue, archived — derived from data, never stored by hand |
 | Daily report | 08:00 Africa/Nouakchott, summary + four tenant lists, one report per date, retries |
 | Reports on demand | today, month, payment history, overdue, upcoming, total revenue, **Excel export** |
-| Settings | default currency, report time, enable/disable daily report, bot info |
+| Settings | default currency, report time, enable/disable daily report, delete/archive policy, bot info |
 | Accounts | multi-tenant: each Telegram account has its own isolated dataset, subscription and empty start |
 | Subscriptions | request → owner approves (30/90 days) → active; on expiry the account is frozen (data kept, renewal screen) |
 | Excel export | `📗 تصدير كل البيانات Excel` builds a real `.xlsx` (summary, buildings, apartments, tenants, payments, arrears) with numbers kept numeric and RTL sheets |
@@ -363,6 +363,13 @@ Cards carry two destructive actions:
 * `🗑 حذف نهائياً` — row delete with a confirmation step and dependency guards:
   a building with apartments, an apartment with any tenant (even archived), or a
   tenant with payments cannot be deleted. Every delete is written to `audit_log`.
+
+Both actions are **per-account settings**: `⚙️ الإعدادات → 🗑 الحذف والأرشفة`
+toggles `allow_delete` and `allow_archive` (default `true`). When a flag is off
+the matching button disappears from every card and a hand-made callback is
+refused (the guard against deleting records with history is not configurable).
+`ContextMiddleware` resolves the flags once per update into
+`app/bot/policy.py`, so keyboard builders never touch the database.
 
 ---
 

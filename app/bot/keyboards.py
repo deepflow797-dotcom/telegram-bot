@@ -12,6 +12,7 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from app.bot import policy as bot_policy
 from app.core.formatting import format_money, status_label
 from app.core.rent import TenantState
 
@@ -186,9 +187,29 @@ def settings_menu(currency: str, report_time: str, report_enabled: bool) -> Inli
             [_btn(f"💱 العملة الافتراضية: {currency}", "s:currency")],
             [_btn(f"⏰ وقت التقرير: {report_time}", "s:time")],
             [_btn(f"🔔 التقرير اليومي: {state}", "s:report")],
+            [_btn("🗑 الحذف والأرشفة", "s:delpol")],
             [_btn("ℹ️ معلومات البوت", "s:info")],
             [_btn("🔙 القائمة الرئيسية", "m:main")],
         ]
+    )
+
+
+def delete_policy_menu(allow_delete: bool, allow_archive: bool) -> InlineKeyboardMarkup:
+    delete_state = "✅ مفعّل" if allow_delete else "⛔️ متوقف"
+    archive_state = "✅ مفعّلة" if allow_archive else "⛔️ متوقفة"
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [_btn(f"🗑 الحذف النهائي: {delete_state}", "s:delpol:del")],
+            [_btn(f"🗄 الأرشفة: {archive_state}", "s:delpol:arch")],
+            [_btn("🔙 رجوع", "m:settings")],
+        ]
+    )
+
+
+def settings_hint(target: str = "m:settings") -> InlineKeyboardMarkup:
+    """A single button that jumps the user to the screen that controls the action."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[_btn("⚙️ الإعدادات", target), _btn("🔙 رجوع", "m:main")]]
     )
 
 
@@ -223,9 +244,10 @@ def building_card(building_id: int, is_active: bool = True) -> InlineKeyboardMar
         [_btn("✏️ تعديل الاسم", f"b:edit:name:{building_id}"), _btn("📍 تعديل العنوان", f"b:edit:address:{building_id}")],
         [_btn("📝 تعديل الوصف", f"b:edit:description:{building_id}")],
     ]
-    if is_active:
+    if is_active and bot_policy.allow_archive():
         rows.append([_btn("🗄 أرشفة المبنى", f"b:arch:{building_id}")])
-    rows.append([_btn("🗑 حذف المبنى نهائياً", f"d:ask:b:{building_id}")])
+    if bot_policy.allow_delete():
+        rows.append([_btn("🗑 حذف المبنى نهائياً", f"d:ask:b:{building_id}")])
     rows.append([_btn("🔙 رجوع", "b:list")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -254,9 +276,10 @@ def apartment_card(apartment: dict) -> InlineKeyboardMarkup:
         ]
     )
     rows.append([_btn("📝 تعديل الوصف", f"a:edit:description:{apartment['id']}")])
-    if apartment.get("is_active"):
+    if apartment.get("is_active") and bot_policy.allow_archive():
         rows.append([_btn("🗄 أرشفة الشقة", f"a:arch:{apartment['id']}")])
-    rows.append([_btn("🗑 حذف الشقة نهائياً", f"d:ask:a:{apartment['id']}")])
+    if bot_policy.allow_delete():
+        rows.append([_btn("🗑 حذف الشقة نهائياً", f"d:ask:a:{apartment['id']}")])
     rows.append([_btn("🔙 رجوع", f"b:apts:{apartment['building_id']}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -316,9 +339,10 @@ def tenant_profile(tenant: dict) -> InlineKeyboardMarkup:
         [_btn("💰 تسجيل الدفع", f"pay:sel:{tenant_id}"), _btn("📄 سجل المدفوعات", f"t:hist:{tenant_id}")],
         [_btn("✏️ تعديل البيانات", f"t:edit:{tenant_id}"), _btn("🔙 رجوع", "t:list:0")],
     ]
-    if tenant.get("is_active"):
+    if tenant.get("is_active") and bot_policy.allow_archive():
         rows.insert(2, [_btn("🗄 أرشفة المستأجر", f"t:arch:{tenant_id}")])
-    rows.append([_btn("🗑 حذف المستأجر نهائياً", f"d:ask:t:{tenant_id}")])
+    if bot_policy.allow_delete():
+        rows.append([_btn("🗑 حذف المستأجر نهائياً", f"d:ask:t:{tenant_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
