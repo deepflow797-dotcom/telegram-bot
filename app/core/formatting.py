@@ -39,7 +39,7 @@ def currency_name(code: str) -> str:
     return CURRENCY_NAMES_AR.get((code or "").upper(), code)
 
 
-def format_money(amount: Decimal | int | float | None, currency: str = "") -> str:
+def format_money(amount: Decimal | float | None, currency: str = "") -> str:
     if amount is None:
         return "—"
     value = Decimal(str(amount))

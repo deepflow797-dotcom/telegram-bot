@@ -18,6 +18,8 @@ from app.bot.utils import (
     parse_int,
     skipped,
     to_html,
+)
+from app.bot.utils import (
     today as today_of,
 )
 from app.bot.views import payment_line, tenant_text
@@ -415,7 +417,7 @@ async def save_tenant(callback: CallbackQuery, state: FSMContext, db, cfg: Setti
             rental_start_date=start,
             notes=data.get("notes"),
         )
-    except Exception:  # noqa: BLE001 - unique violation etc.
+    except Exception:
         logger.exception("failed to create tenant")
         await answer_callback(callback, "⚠️ تعذر حفظ المستأجر. قد تكون الشقة مشغولة.", alert=True)
         return

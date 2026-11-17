@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import datetime as dt
 from dataclasses import dataclass, field
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 
 from app.core.dates import add_months, months_between
@@ -48,7 +48,7 @@ class PaymentType(str, Enum):
     OVERPAYMENT = "overpayment"
 
 
-def money(value: Decimal | int | float | str) -> Decimal:
+def money(value: Decimal | float | str) -> Decimal:
     return Decimal(str(value)).quantize(MONEY_QUANT, rounding=ROUND_HALF_UP)
 
 

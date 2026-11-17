@@ -10,6 +10,7 @@ from aiogram.enums import ParseMode
 from aiogram.types import BotCommand
 
 from app.bot.handlers import (
+    admin,
     common,
     edits,
     errors,
@@ -20,7 +21,7 @@ from app.bot.handlers import (
     settings,
     tenants,
 )
-from app.bot.middlewares import ContextMiddleware, OwnerOnlyMiddleware
+from app.bot.middlewares import AccessMiddleware, ContextMiddleware
 from app.config import Settings
 from app.db.connection import Database
 from app.db.fsm import PostgresStorage
@@ -35,7 +36,18 @@ BOT_COMMANDS = [
     BotCommand(command="id", description="عرض معرّف حسابي"),
 ]
 
-HANDLER_MODULES = [common, properties, edits, tenants, payments, reports, search, settings, errors]
+HANDLER_MODULES = [
+    admin,
+    common,
+    properties,
+    edits,
+    tenants,
+    payments,
+    reports,
+    search,
+    settings,
+    errors,
+]
 
 # aiogram allows a router to be attached to a single parent only. Handler
 # modules register on template routers at import time, so every dispatcher gets
@@ -85,12 +97,12 @@ def build_bot(cfg: Settings) -> Bot:
 def create_dispatcher(cfg: Settings, db: Database) -> Dispatcher:
     dp = Dispatcher(storage=PostgresStorage(db))
 
-    owner_middleware = OwnerOnlyMiddleware(cfg.owner_id)
+    access_middleware = AccessMiddleware(db, cfg)
     context_middleware = ContextMiddleware(db, cfg)
 
     # Authorization runs first (outer), context injection afterwards (inner).
-    dp.message.outer_middleware(owner_middleware)
-    dp.callback_query.outer_middleware(owner_middleware)
+    dp.message.outer_middleware(access_middleware)
+    dp.callback_query.outer_middleware(access_middleware)
     dp.message.middleware(context_middleware)
     dp.callback_query.middleware(context_middleware)
 

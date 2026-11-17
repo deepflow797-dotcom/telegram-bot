@@ -12,8 +12,9 @@ import asyncio
 import dataclasses
 import datetime as dt
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator
+from typing import Any
 
 from aiogram.types import Update
 from fastapi import FastAPI, HTTPException, Request
@@ -23,8 +24,10 @@ from app.bot.dispatcher import build_bot, create_dispatcher, register_bot_comman
 from app.bot.utils import today as today_of
 from app.config import ConfigError, Settings
 from app.core.dates import parse_date
+from app.db import platform
 from app.db import repository as repo
 from app.db.connection import Database
+from app.db.context import use_account
 from app.db.fsm import purge_stale_states
 from app.db.payments import expire_pending_payments
 from app.db.reports import get_report_for_date
@@ -70,6 +73,10 @@ class Runtime:
 
             applied = await apply_migrations(cfg.database_url)
             log_event(logger, "auto-migration finished", versions=applied)
+        try:
+            await platform.ensure_owner_account(self.db, cfg.telegram_owner_id)
+        except Exception:
+            logger.exception("could not ensure the owner account")
         if not cfg.webhook_url:
             return
         current = await repo.get_app_setting(self.db, "webhook_url")
@@ -98,7 +105,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await runtime.start()
         try:
             await asyncio.wait_for(runtime.bootstrap(), timeout=30)
-        except Exception:  # noqa: BLE001 - never block serving requests
+        except Exception:
             logger.exception("bootstrap step failed; use /api/admin/migrate or setup-webhook")
     try:
         yield
@@ -210,7 +217,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         try:
             await runtime.dispatcher.feed_update(runtime.bot, update)
-        except Exception:  # noqa: BLE001 - Telegram must still get 200
+        except Exception:
             logger.exception("failed to process update")
             return {"ok": False, "reason": "processing_error"}
         return {"ok": True}
@@ -221,7 +228,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         require_cron_secret(request, runtime.cfg.cron_secret)
 
         cfg = runtime.cfg
-        settings_map = await repo.get_app_settings(runtime.db)
         report_date = today_of(cfg)
         requested = request.query_params.get("date")
         if requested:
@@ -233,29 +239,60 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             report_date = parsed
 
         force = request.query_params.get("force") == "1"
-        if settings_map.get("report_enabled", "true") != "true" and not force:
-            return {"status": "disabled", "report_date": report_date.isoformat()}
-
         from app.bot.utils import make_sender
 
-        send = make_sender(runtime.bot, cfg.owner_id)
-        result = await run_daily_report(
-            runtime.db,
-            tz=cfg.tz,
-            report_date=report_date,
-            now=dt.datetime.now(cfg.tz),
-            send=send,
-            upcoming_days=int(settings_map.get("upcoming_days", "3") or 3),
-        )
+        accounts = await platform.active_accounts(runtime.db, report_date)
+        if not accounts:  # single-tenant fallback (fresh install before bootstrap)
+            accounts = [{"id": 1, "telegram_id": cfg.owner_id}]
+
+        results: list[dict] = []
+        for account in accounts:
+            chat_id = account.get("telegram_id")
+            if not chat_id:
+                continue
+            with use_account(account["id"]):
+                settings_map = await repo.get_app_settings(runtime.db)
+                if settings_map.get("report_enabled", "true") != "true" and not force:
+                    results.append(
+                        {
+                            "account_id": account["id"],
+                            "status": "disabled",
+                            "report_date": report_date.isoformat(),
+                        }
+                    )
+                    continue
+                send = make_sender(runtime.bot, chat_id)
+                outcome = await run_daily_report(
+                    runtime.db,
+                    tz=cfg.tz,
+                    report_date=report_date,
+                    now=dt.datetime.now(cfg.tz),
+                    send=send,
+                    upcoming_days=int(settings_map.get("upcoming_days", "3") or 3),
+                )
+                payload = outcome.as_dict()
+                payload["account_id"] = account["id"]
+                results.append(payload)
+                if outcome.status == "failed":
+                    _notify_owner_failure(runtime, outcome)
 
         # housekeeping: cheap, safe, idempotent
         await repo.purge_old_updates(runtime.db, keep_days=7)
         await expire_pending_payments(runtime.db, older_than_hours=48)
         await purge_stale_states(runtime.db, keep_days=7)
 
-        if result.status == "failed":
-            _notify_owner_failure(runtime, result)
-        return result.as_dict()
+        if len(results) == 1:
+            body = dict(results[0])
+            body["accounts"] = 1
+            return body
+        statuses = {item["status"] for item in results}
+        overall = "sent" if "sent" in statuses else (statuses.pop() if statuses else "skipped")
+        return {
+            "status": overall,
+            "report_date": report_date.isoformat(),
+            "accounts": len(results),
+            "results": results,
+        }
 
     @app.api_route("/api/admin/setup-webhook", methods=["GET", "POST"])
     async def setup_webhook(request: Request) -> Any:
@@ -366,7 +403,7 @@ def _notify_owner_failure(runtime: Runtime, result: Any) -> None:
                 f"التاريخ: {result.report_date.isoformat()}\n"
                 "سيتم إعادة المحاولة في التشغيل القادم. راجع سجلات الخادم.",
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("could not notify owner about failed report")
 
     try:

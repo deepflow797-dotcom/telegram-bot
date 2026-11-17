@@ -9,7 +9,6 @@ import httpx
 import pytest_asyncio
 from aiogram.types import Message, User
 
-from app.bot.middlewares import OwnerOnlyMiddleware
 from app.config import ConfigError, Settings
 from app.db import repository as repo
 from app.db import tenants as tenants_repo
@@ -108,9 +107,11 @@ async def test_unauthorized_user_is_rejected(web) -> None:
     assert response.status_code == 200
     assert response.json() == {"ok": True}
     texts = session.sent_texts()
-    assert len(texts) == 1
-    assert "خاص بالمالك" in texts[0] or "غير مصرح" in texts[0]
-    assert "مرحباً" not in texts[0]
+    assert len(texts) == 2  # owner notification + subscription screen
+    assert "طلب تفعيل جديد" in texts[0]
+    assert "بالاشتراك" in texts[1] or "غير مفعّل" in texts[1]
+    assert "22222222" in texts[1]  # owner contact is shown
+    assert "مرحباً" not in texts[1]
 
 
 async def test_owner_start_command(web) -> None:
@@ -169,7 +170,7 @@ async def test_cron_sends_report_once(web, db) -> None:
         db,
         full_name="محمد أحمد",
         apartment_id=apartment["id"],
-        monthly_rent=Decimal("10000"),
+        monthly_rent=Decimal(10000),
         currency="MRU",
         rental_start_date=dt.date.today(),
     )
@@ -245,8 +246,15 @@ def _user(user_id: int) -> User:
     return User(id=user_id, is_bot=False, first_name="x")
 
 
-async def test_middleware_blocks_foreign_user() -> None:
-    middleware = OwnerOnlyMiddleware(OWNER_ID)
+async def test_middleware_blocks_foreign_user(db, settings) -> None:
+    """An unknown user only gets the subscription screen; no handler runs."""
+    from app.bot.dispatcher import build_bot
+    from app.bot.middlewares import AccessMiddleware
+    from tests.fake_bot import FakeSession
+
+    bot = build_bot(settings)
+    bot.session = FakeSession()
+    middleware = AccessMiddleware(db, settings)
     called = False
 
     async def handler(event, data):
@@ -258,19 +266,30 @@ async def test_middleware_blocks_foreign_user() -> None:
         {
             "message_id": 1,
             "date": 1767225600,
-            "chat": {"id": OWNER_ID, "type": "private"},
+            "chat": {"id": 424242, "type": "private"},
             "text": "hi",
         }
-    )
-    result = await middleware(handler, message, {"event_from_user": _user(424242)})
+    ).as_(bot)
+    result = await middleware(handler, message, {"event_from_user": _user(424242), "bot": bot})
     assert result is None
     assert called is False
+    await bot.session.close()
+
+    from app.db import platform
+
+    account = await platform.get_account_by_telegram(db, 424242)
+    assert account is not None
+    assert account["status"] == "pending"
 
 
-async def test_middleware_allows_owner() -> None:
-    middleware = OwnerOnlyMiddleware(OWNER_ID)
+async def test_middleware_allows_owner(db, settings) -> None:
+    from app.bot.middlewares import AccessMiddleware
+
+    middleware = AccessMiddleware(db, settings)
 
     async def handler(event, data):
+        assert data["is_owner"] is True
+        assert data["account"]["id"] == 1
         return "handled"
 
     result = await middleware(handler, "event", {"event_from_user": _user(OWNER_ID)})
@@ -301,7 +320,7 @@ async def test_schema_health_and_migration_endpoint(postgres_dsn) -> None:
             assert (await client.post("/api/admin/migrate")).status_code == 401
             applied = await client.post("/api/admin/migrate", headers=CRON_HEADERS)
             assert applied.status_code == 200
-            assert applied.json()["applied"] == ["0001_init"]
+            assert applied.json()["applied"] == ["0001_init", "0002_accounts"]
             assert applied.json()["schema_ready"] is True
 
             after = await client.get("/api/health")
@@ -315,6 +334,7 @@ async def test_schema_health_and_migration_endpoint(postgres_dsn) -> None:
 async def test_auto_setup_migrates_and_registers_webhook_once(postgres_dsn) -> None:
     """AUTO_SETUP=true brings a brand-new deployment to a working state."""
     import uuid
+
     import psycopg
 
     name = f"auto_{uuid.uuid4().hex[:8]}"

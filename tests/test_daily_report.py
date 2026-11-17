@@ -6,7 +6,6 @@ import datetime as dt
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-
 from app.core.reports import render_daily_report
 from app.db import payments as payments_repo
 from app.db import reports as reports_repo

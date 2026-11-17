@@ -47,3 +47,8 @@ class SettingsForm(StatesGroup):
 
 class EditForm(StatesGroup):
     value = State()
+
+
+class ContactForm(StatesGroup):
+    phone = State()
+    note = State()

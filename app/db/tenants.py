@@ -240,4 +240,4 @@ async def payment_stats(db: Database, tenant_id: int) -> dict:
         """,
         (tenant_id,),
     )
-    return row or {"payments_count": 0, "total_paid": Decimal("0"), "last_payment_at": None}
+    return row or {"payments_count": 0, "total_paid": Decimal(0), "last_payment_at": None}

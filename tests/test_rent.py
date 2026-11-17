@@ -26,7 +26,7 @@ def make_state(**overrides):
         currency="MRU",
         cycle_start=dt.date(2025, 12, 15),
         next_due=dt.date(2026, 1, 15),
-        credit=Decimal("0"),
+        credit=Decimal(0),
         is_active=True,
         today=TODAY,
     )
@@ -81,7 +81,7 @@ def test_overdue_state_accumulates_arrears() -> None:
 
 
 def test_credit_reduces_amount_due() -> None:
-    state = make_state(credit=Decimal("4000"))
+    state = make_state(credit=Decimal(4000))
     assert state.outstanding == Decimal("6000.00")
     assert state.remaining_for_period == Decimal("6000.00")
 
@@ -102,7 +102,7 @@ def test_full_payment_rolls_cycle_from_payment_date() -> None:
         currency="MRU",
         cycle_start=dt.date(2025, 12, 15),
         next_due=dt.date(2026, 1, 15),
-        credit=Decimal("0"),
+        credit=Decimal(0),
         amount=RENT,
         payment_date=TODAY,
     )
@@ -122,7 +122,7 @@ def test_full_payment_on_month_end_clamps() -> None:
         currency="MRU",
         cycle_start=dt.date(2025, 12, 31),
         next_due=dt.date(2026, 1, 31),
-        credit=Decimal("0"),
+        credit=Decimal(0),
         amount=RENT,
         payment_date=dt.date(2026, 1, 31),
     )
@@ -135,8 +135,8 @@ def test_partial_payment_keeps_due_date_and_balance() -> None:
         currency="MRU",
         cycle_start=dt.date(2025, 12, 15),
         next_due=dt.date(2026, 1, 15),
-        credit=Decimal("0"),
-        amount=Decimal("4000"),
+        credit=Decimal(0),
+        amount=Decimal(4000),
         payment_date=TODAY,
     )
     assert plan.payment_type is PaymentType.PARTIAL
@@ -154,8 +154,8 @@ def test_multiple_partial_payments_then_completion() -> None:
         currency="MRU",
         cycle_start=dt.date(2025, 12, 15),
         next_due=dt.date(2026, 1, 15),
-        credit=Decimal("0"),
-        amount=Decimal("3000"),
+        credit=Decimal(0),
+        amount=Decimal(3000),
         payment_date=dt.date(2026, 1, 10),
     )
     assert first.payment_type is PaymentType.PARTIAL
@@ -166,7 +166,7 @@ def test_multiple_partial_payments_then_completion() -> None:
         cycle_start=first.new_cycle_start,
         next_due=first.new_next_due,
         credit=first.new_credit,
-        amount=Decimal("7000"),
+        amount=Decimal(7000),
         payment_date=dt.date(2026, 1, 20),
     )
     assert second.payment_type is PaymentType.FULL
@@ -183,8 +183,8 @@ def test_overpayment_keeps_extra_as_credit() -> None:
         currency="MRU",
         cycle_start=dt.date(2025, 12, 15),
         next_due=dt.date(2026, 1, 15),
-        credit=Decimal("0"),
-        amount=Decimal("12000"),
+        credit=Decimal(0),
+        amount=Decimal(12000),
         payment_date=TODAY,
     )
     assert plan.payment_type is PaymentType.OVERPAYMENT
@@ -201,8 +201,8 @@ def test_large_overpayment_funds_following_months() -> None:
         currency="MRU",
         cycle_start=dt.date(2025, 12, 15),
         next_due=dt.date(2026, 1, 15),
-        credit=Decimal("0"),
-        amount=Decimal("30000"),
+        credit=Decimal(0),
+        amount=Decimal(30000),
         payment_date=TODAY,
     )
     assert plan.periods_funded == 3
@@ -218,8 +218,8 @@ def test_payment_clears_arrears() -> None:
         currency="MRU",
         cycle_start=dt.date(2025, 10, 15),
         next_due=dt.date(2025, 11, 15),
-        credit=Decimal("0"),
-        amount=Decimal("30000"),
+        credit=Decimal(0),
+        amount=Decimal(30000),
         payment_date=TODAY,
     )
     assert plan.required_before == RENT * 3
@@ -233,8 +233,8 @@ def test_arrears_partial_payment_does_not_close() -> None:
         currency="MRU",
         cycle_start=dt.date(2025, 10, 15),
         next_due=dt.date(2025, 11, 15),
-        credit=Decimal("0"),
-        amount=Decimal("15000"),
+        credit=Decimal(0),
+        amount=Decimal(15000),
         payment_date=TODAY,
     )
     assert plan.payment_type is PaymentType.PARTIAL
@@ -249,8 +249,8 @@ def test_payment_amount_must_be_positive() -> None:
             currency="MRU",
             cycle_start=dt.date(2025, 12, 15),
             next_due=dt.date(2026, 1, 15),
-            credit=Decimal("0"),
-            amount=Decimal("0"),
+            credit=Decimal(0),
+            amount=Decimal(0),
             payment_date=TODAY,
         )
 
@@ -261,7 +261,7 @@ def test_state_after_full_payment_is_covered() -> None:
         currency="MRU",
         cycle_start=dt.date(2025, 12, 15),
         next_due=dt.date(2026, 1, 15),
-        credit=Decimal("0"),
+        credit=Decimal(0),
         amount=RENT,
         payment_date=TODAY,
     )

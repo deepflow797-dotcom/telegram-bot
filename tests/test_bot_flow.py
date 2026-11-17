@@ -38,7 +38,7 @@ class Bot:
             "update_id": self.update_id,
             "message": {
                 "message_id": self.message_id,
-                "date": int(dt.datetime.now(dt.timezone.utc).timestamp()),
+                "date": int(dt.datetime.now(dt.UTC).timestamp()),
                 "chat": CHAT,
                 "from": FROM,
                 "text": text,
@@ -60,7 +60,7 @@ class Bot:
                 "data": data,
                 "message": {
                     "message_id": self.message_id,
-                    "date": int(dt.datetime.now(dt.timezone.utc).timestamp()),
+                    "date": int(dt.datetime.now(dt.UTC).timestamp()),
                     "chat": CHAT,
                     "from": FROM,
                     "text": "القائمة",

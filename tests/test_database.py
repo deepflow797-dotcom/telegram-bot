@@ -26,7 +26,7 @@ async def make_tenant(db, apartment_id: int, **overrides):
         full_name="محمد أحمد",
         phone="22212345678",
         apartment_id=apartment_id,
-        monthly_rent=Decimal("10000"),
+        monthly_rent=Decimal(10000),
         currency="MRU",
         rental_start_date=dt.date(2026, 1, 15),
     )
@@ -120,7 +120,7 @@ async def test_update_tenant_preserves_cycle_dates(db) -> None:
     _, apartment = await make_property(db)
     tenant = await make_tenant(db, apartment["id"])
     updated = await tenants_repo.update_tenant(
-        db, tenant["id"], monthly_rent=Decimal("12000"), phone="22200000000", notes="ملاحظة"
+        db, tenant["id"], monthly_rent=Decimal(12000), phone="22200000000", notes="ملاحظة"
     )
     # editing must never reset the rental timer
     assert updated["current_cycle_start"] == tenant["current_cycle_start"]

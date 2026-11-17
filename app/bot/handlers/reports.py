@@ -11,12 +11,17 @@ from app.bot import keyboards as kb
 from app.bot.utils import (
     answer_callback,
     edit_or_send,
-    now as now_of,
     send_long,
+)
+from app.bot.utils import (
+    now as now_of,
+)
+from app.bot.utils import (
     today as today_of,
 )
 from app.config import Settings
 from app.core.dates import month_bounds
+from app.core.rent import TenantStatus
 from app.core.reports import (
     render_daily_report,
     render_monthly_report,
@@ -26,7 +31,6 @@ from app.core.reports import (
     render_upcoming_report,
     to_report_tenant,
 )
-from app.core.rent import TenantStatus
 from app.db import payments as payments_repo
 from app.services.daily_report import keyboard_for_block, run_daily_report
 from app.services.reports_data import (

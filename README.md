@@ -22,7 +22,9 @@ registers it with two taps; the bot does the arithmetic and the reporting.
 | Daily report | 08:00 Africa/Nouakchott, summary + four tenant lists, one report per date, retries |
 | Reports on demand | today, month, payment history, overdue, upcoming, total revenue |
 | Settings | default currency, report time, enable/disable daily report, bot info |
-| Security | single-owner authorization, secret-protected webhook, secret-protected cron/admin endpoints, audit log |
+| Accounts | multi-tenant: each Telegram account has its own isolated dataset, subscription and empty start |
+| Subscriptions | request → owner approves (30/90 days) → active; on expiry the account is frozen (data kept, renewal screen) |
+| Security | per-account isolation, owner-only admin screens, secret-protected webhook/cron/admin endpoints, audit log |
 
 Everything in the chat is Arabic and button-driven — no commands required
 (`/start`, `/menu`, `/cancel`, `/help`, `/id` exist as conveniences).
@@ -235,7 +237,13 @@ only.
 
 ## 7. Database setup
 
-* Schema: `app/db/migrations/0001_init.sql` — see [docs/DATABASE.md](docs/DATABASE.md).
+* Schema: `app/db/migrations/0001_init.sql` (business tables, originally single-owner)
+  and `app/db/migrations/0002_accounts.sql` (multi-account platform) — see
+  [docs/DATABASE.md](docs/DATABASE.md).
+* `0002` moves the existing tables into the schema `acct_1` (the owner's private
+  dataset), creates `public.accounts` + `public.platform_settings`, and installs
+  `app_provision_account(id)` which builds an empty `acct_<id>` for every new
+  customer. It is safe to run on a database that already has data.
 * Apply with `python -m app.db.migrate`, the script
   `python scripts/apply_migrations.py`, or the protected endpoint
   `POST /api/admin/migrate` (header `Authorization: Bearer $CRON_SECRET`) — handy
@@ -387,8 +395,16 @@ Last run: **130 passed** (`python -m pytest`).
 
 ## 14. Security notes
 
-* Single-owner access enforced in an aiogram **outer** middleware, before any
-  handler or query runs; unknown users get one refusal message and nothing else.
+* Access is enforced in an aiogram **outer** middleware, before any handler or
+  query runs. Unknown users get a request screen only; pending, rejected and
+  frozen accounts see a status screen and nothing else.
+* Every account reads and writes its **own PostgreSQL schema** (`acct_<id>`).
+  The middleware sets the active account for the update and `Database`
+  switches `search_path` on each pooled connection, so a customer query cannot
+  return the owner's rows even if a filter is forgotten.
+* Owner-only screens (`📥 طلبات الاشتراك`, `📞 بيانات التواصل`, account list) are
+  both hidden from other accounts' keyboards **and** re-checked inside every
+  handler with the injected `is_owner` flag.
 * Webhook authenticity via Telegram's secret-token header, compared with
   `hmac.compare_digest`. Cron/admin endpoints require `Authorization: Bearer
   $CRON_SECRET` (or `X-Cron-Secret`), also constant-time.
@@ -399,3 +415,25 @@ Last run: **130 passed** (`python -m pytest`).
 * `audit_log` records building/apartment/tenant creation, edits, archiving,
   payments and settings changes.
 * Secrets never reach logs, `.env.example`, or the repository.
+
+---
+
+## 15. Accounts & subscriptions (multi-tenant)
+
+The bot is a product, not a personal tool: one deployment serves many customers.
+
+| Step | What happens |
+| --- | --- |
+| Someone presses `/start` | a row is created in `accounts` with status `pending`; the owner gets a notification with the applicant's name, username, Telegram id and **✅ 30 / ✅ 90 days / ❌ reject** buttons |
+| Applicant's screen | owner phone (`22222222` by default) + the request note (*"send your username"*) + a 🔄 check button |
+| Owner approves | the customer's own `acct_<id>` schema is provisioned **empty**, `paid_until` is set, and the customer receives an activation message |
+| Owner rejects | the applicant sees a rejection screen; nothing is provisioned |
+| Subscription ends | status becomes `frozen` automatically (`effective_status`): no edits, a renewal screen with the contact number, **all data kept** |
+| Renewal | the owner extends from `📥 طلبات الاشتراك` / `👤 الحسابات` — the account is active again with the same data |
+
+* Daily reports run per account: `/api/cron/daily-report` loops over the active
+  accounts and sends each owner/client their own report for their own dataset.
+* The owner edits the contact phone and the request note from inside the bot
+  (`📞 بيانات التواصل`), stored in `public.platform_settings`.
+* Account 1 is always the platform owner (`TELEGRAM_OWNER_ID`); it never
+  expires and never sees a subscription screen.

@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Awaitable, Callable
 
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -107,7 +107,7 @@ async def run_daily_report(
             messages_sent=sent_messages,
             summary=summary,
         )
-    except Exception as exc:  # noqa: BLE001 - must never break the caller
+    except Exception as exc:
         logger.exception("daily report failed")
         await reports_repo.mark_report_failed(db, report_id, f"{type(exc).__name__}: {exc}")
         return ReportRunResult(

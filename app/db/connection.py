@@ -9,19 +9,26 @@ Design notes
 * ``prepare_threshold=None`` disables server-side prepared statements so the
   same URL also works with Supabase's transaction-mode pooler (pgbouncer).
 * Rows are returned as ``dict`` objects; NUMERIC becomes ``Decimal``.
+* Every connection is pointed at the active account schema (``acct_<id>``)
+  through ``search_path`` before a query runs, which keeps the datasets of
+  different Telegram accounts physically separated. Connections run in
+  autocommit mode so that this session setting is visible to every later
+  statement; ``transaction()`` still gives real atomic blocks.
 """
 
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator
+from typing import Any
 
 from psycopg import AsyncConnection
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
 from app.config import redact_dsn
+from app.db.context import current_account_id, schema_for
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +51,7 @@ class Database:
                 "prepare_threshold": None,
                 "connect_timeout": 10,
                 "application_name": "rental-bot",
+                "autocommit": True,
             },
         )
         self._opened = False
@@ -60,11 +68,11 @@ class Database:
             await self._pool.close()
             self._opened = False
 
-    async def __aenter__(self) -> "Database":
+    async def __aenter__(self) -> Database:
         await self.open()
         return self
 
-    async def __aexit__(self, *exc_info: Any) -> None:
+    async def __aexit__(self, *exc_info: object) -> None:
         await self.close()
 
     # -- queries -----------------------------------------------------------
@@ -72,14 +80,20 @@ class Database:
     async def connection(self) -> AsyncIterator[AsyncConnection]:
         await self.open()
         async with self._pool.connection() as conn:
+            await self._select_account(conn)
             yield conn
+
+    @staticmethod
+    async def _select_account(conn: AsyncConnection) -> None:
+        """Point this connection at the active account's schema."""
+        path = f"{schema_for(current_account_id())}, public"
+        await conn.execute("SELECT set_config('search_path', %s, false)", (path,))
 
     @asynccontextmanager
     async def transaction(self) -> AsyncIterator[AsyncConnection]:
         """Run a block in an explicit transaction (commit on success)."""
-        async with self.connection() as conn:
-            async with conn.transaction():
-                yield conn
+        async with self.connection() as conn, conn.transaction():
+            yield conn
 
     async def fetch_all(self, sql: str, params: tuple | dict | None = None) -> list[dict]:
         async with self.connection() as conn:
@@ -111,7 +125,12 @@ class Database:
     async def schema_ready(self) -> bool:
         """True when the application tables exist (migrations applied)."""
         try:
-            exists = await self.fetch_value("SELECT to_regclass('public.buildings') IS NOT NULL")
+            exists = await self.fetch_value(
+                """
+                SELECT to_regclass('public.accounts') IS NOT NULL
+                   AND to_regclass('acct_1.buildings') IS NOT NULL
+                """
+            )
             return bool(exists)
         except Exception:  # pragma: no cover - depends on network
             logger.exception("schema check failed")

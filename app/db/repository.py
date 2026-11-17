@@ -5,7 +5,8 @@ All SQL is parameterised. Money columns are NUMERIC and come back as Decimal.
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from app.db.connection import Database
 

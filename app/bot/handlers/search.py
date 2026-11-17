@@ -11,7 +11,8 @@ from aiogram.types import CallbackQuery, Message
 from app.bot import keyboards as kb
 from app.bot import texts
 from app.bot.states import SearchForm
-from app.bot.utils import answer_callback, edit_or_send, send_long, today as today_of
+from app.bot.utils import answer_callback, edit_or_send, send_long
+from app.bot.utils import today as today_of
 from app.config import Settings
 from app.core.formatting import format_date, format_money, status_label
 from app.db import tenants as tenants_repo

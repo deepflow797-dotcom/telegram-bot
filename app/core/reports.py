@@ -48,10 +48,10 @@ class CurrencyTotals:
     values: dict[str, Decimal] = field(default_factory=dict)
 
     def add(self, currency: str, amount: Decimal) -> None:
-        self.values[currency] = self.values.get(currency, Decimal("0")) + Decimal(amount)
+        self.values[currency] = self.values.get(currency, Decimal(0)) + Decimal(amount)
 
     def get(self, currency: str) -> Decimal:
-        return self.values.get(currency, Decimal("0"))
+        return self.values.get(currency, Decimal(0))
 
     @property
     def is_empty(self) -> bool:

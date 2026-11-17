@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import tempfile
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import pgserver
 import pytest
@@ -14,19 +14,21 @@ from app.config import Settings
 from app.db.connection import Database
 from app.db.migrate import apply_migrations
 
-TABLES = [
+# Business tables exist once per account schema (``acct_<id>``).
+ACCOUNT_TABLES = [
     "payment_allocations",
     "payments",
     "pending_payments",
     "daily_reports",
     "audit_log",
-    "processed_updates",
-    "bot_fsm_states",
     "tenants",
     "apartments",
     "buildings",
     "app_settings",
 ]
+
+# Platform tables live in ``public`` and are shared by every account.
+PLATFORM_TABLES = ["processed_updates", "bot_fsm_states", "accounts", "platform_settings"]
 
 OWNER_ID = 111222333
 
@@ -53,11 +55,30 @@ def postgres_dsn() -> str:
         pass
 
 
+async def _reset_all_accounts(database: Database) -> None:
+    """Empty every per-account schema plus the shared platform tables."""
+    await database.execute("SELECT app_provision_account(1)")
+    schemas = await database.fetch_all(
+        "SELECT nspname FROM pg_namespace WHERE nspname LIKE 'acct\\_%'"
+    )
+    for row in schemas:
+        schema = row["nspname"]
+        targets = ", ".join(f'{schema}."{table}"' for table in ACCOUNT_TABLES)
+        await database.execute(f"TRUNCATE {targets} RESTART IDENTITY CASCADE")
+    await database.execute(
+        "TRUNCATE " + ", ".join(PLATFORM_TABLES) + " RESTART IDENTITY CASCADE"
+    )
+    # Recreate the owner row so tests never reuse its id (= account 1).
+    from app.db import platform
+
+    await platform.ensure_owner_account(database, OWNER_ID)
+
+
 @pytest_asyncio.fixture
 async def db(postgres_dsn: str) -> AsyncIterator[Database]:
     database = Database(postgres_dsn, min_size=1, max_size=4)
     await database.open()
-    await database.execute("TRUNCATE " + ", ".join(TABLES) + " RESTART IDENTITY CASCADE")
+    await _reset_all_accounts(database)
     await database.execute(
         """
         INSERT INTO app_settings (key, value) VALUES

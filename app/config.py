@@ -57,7 +57,7 @@ class Settings:
 
     # -- loading -----------------------------------------------------------
     @classmethod
-    def from_env(cls, env: dict[str, str] | None = None) -> "Settings":
+    def from_env(cls, env: dict[str, str] | None = None) -> Settings:
         env = dict(os.environ if env is None else env)
         problems: list[str] = []
 

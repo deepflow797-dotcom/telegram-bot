@@ -15,7 +15,7 @@ from typing import Any
 _SECRET_PATTERNS = [
     re.compile(r"(bot\d{6,}:[A-Za-z0-9_-]{20,})"),
     re.compile(r"(postgres(?:ql)?://[^:\s]+:)([^@\s]+)(@)"),
-    re.compile(r"((?:token|secret|password|apikey|api_key)\s*[=:]\s*)(\S+)", re.I),
+    re.compile(r"((?:token|secret|password|apikey|api_key)\s*[=:]\s*)(\S+)", re.IGNORECASE),
 ]
 
 

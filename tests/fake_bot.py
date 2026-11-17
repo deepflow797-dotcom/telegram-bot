@@ -10,7 +10,7 @@ from aiogram.client.session.base import BaseSession
 from aiogram.methods import TelegramMethod
 from aiogram.types import Message, WebhookInfo
 
-BASE_DATE = int(dt.datetime(2026, 1, 15, 8, 0, tzinfo=dt.timezone.utc).timestamp())
+BASE_DATE = int(dt.datetime(2026, 1, 15, 8, 0, tzinfo=dt.UTC).timestamp())
 
 
 def _message(text: str | None, chat_id: int = 0) -> Message:

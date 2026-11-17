@@ -68,7 +68,7 @@ async def error_handler(event: ErrorEvent) -> bool:
                 "⚠️ حدث خطأ غير متوقع. تم تسجيل المشكلة في السجلات.",
                 reply_markup=kb.main_menu(),
             )
-    except Exception:  # noqa: BLE001 - never fail inside the error handler
+    except Exception:
         logger.exception("failed to notify owner about the error")
     return True
 

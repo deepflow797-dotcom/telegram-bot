@@ -21,18 +21,25 @@ BTN_PAY = "💰 تسجيل الدفع"
 BTN_REPORTS = "📊 التقارير"
 BTN_SEARCH = "🔎 البحث"
 BTN_SETTINGS = "⚙️ الإعدادات"
+BTN_REQUESTS = "📥 طلبات الاشتراك"
+BTN_CONTACT = "📞 بيانات التواصل"
 
 TENANTS_PAGE_SIZE = 8
 PAY_TENANTS_PAGE_SIZE = 8
 
 
 def main_menu() -> ReplyKeyboardMarkup:
+    from app.bot.menu_context import owner_menu
+
+    rows = [
+        [KeyboardButton(text=BTN_PROPERTIES), KeyboardButton(text=BTN_TENANTS)],
+        [KeyboardButton(text=BTN_PAY), KeyboardButton(text=BTN_REPORTS)],
+        [KeyboardButton(text=BTN_SEARCH), KeyboardButton(text=BTN_SETTINGS)],
+    ]
+    if owner_menu():
+        rows.append([KeyboardButton(text=BTN_REQUESTS), KeyboardButton(text=BTN_CONTACT)])
     return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text=BTN_PROPERTIES), KeyboardButton(text=BTN_TENANTS)],
-            [KeyboardButton(text=BTN_PAY), KeyboardButton(text=BTN_REPORTS)],
-            [KeyboardButton(text=BTN_SEARCH), KeyboardButton(text=BTN_SETTINGS)],
-        ],
+        keyboard=rows,
         resize_keyboard=True,
         input_field_placeholder="اختر من القائمة…",
     )
@@ -43,12 +50,69 @@ def _btn(text: str, callback_data: str) -> InlineKeyboardButton:
 
 
 def main_inline() -> InlineKeyboardMarkup:
+    from app.bot.menu_context import owner_menu
+
+    rows = [
+        [_btn("🏠 إدارة العقارات", "m:props"), _btn("👥 المستأجرون", "m:tenants")],
+        [_btn("💰 تسجيل الدفع", "m:pay"), _btn("📊 التقارير", "m:reports")],
+        [_btn("🔎 البحث", "m:search"), _btn("⚙️ الإعدادات", "m:settings")],
+    ]
+    if owner_menu():
+        rows.append([_btn("📥 طلبات الاشتراك", "m:requests"), _btn("📞 بيانات التواصل", "m:contact")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+# ---------------------------------------------------------------------------
+# platform owner: subscription requests, accounts, contact settings
+# ---------------------------------------------------------------------------
+def requests_list(accounts: list[dict]) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for acc in accounts:
+        who = acc.get("display_name") or f"حساب {acc['id']}"
+        handle = f" @{acc['username']}" if acc.get("username") else ""
+        label = f"{who}{handle}"[:40]
+        builder.row(
+            _btn(f"✅ {label}", f"adm:ok:{acc['id']}:30"),
+            _btn("❌", f"adm:no:{acc['id']}"),
+        )
+    builder.row(_btn("🔄 تحديث", "m:requests"), _btn("🔙 القائمة الرئيسية", "m:main"))
+    return builder.as_markup()
+
+
+def accounts_list(accounts: list[dict]) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for acc in accounts:
+        who = (acc.get("display_name") or f"حساب {acc['id']}")[:22]
+        builder.row(_btn(f"👤 {who}", f"adm:acc:{acc['id']}"))
+    builder.row(_btn("🔄 تحديث", "m:accounts"), _btn("🔙 القائمة الرئيسية", "m:main"))
+    return builder.as_markup()
+
+
+def account_actions(account: dict) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(_btn("➕ تمديد 30 يوم", f"adm:ext:{account['id']}:30"))
+    builder.row(_btn("➕ تمديد 90 يوم", f"adm:ext:{account['id']}:90"))
+    if account.get("status") == "active":
+        builder.row(_btn("⏸ إيقاف", f"adm:freeze:{account['id']}"))
+    else:
+        builder.row(_btn("▶️ تفعيل", f"adm:on:{account['id']}"))
+    builder.row(_btn("🔙 الحسابات", "m:accounts"))
+    return builder.as_markup()
+
+
+def contact_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [_btn("🏠 إدارة العقارات", "m:props"), _btn("👥 المستأجرون", "m:tenants")],
-            [_btn("💰 تسجيل الدفع", "m:pay"), _btn("📊 التقارير", "m:reports")],
-            [_btn("🔎 البحث", "m:search"), _btn("⚙️ الإعدادات", "m:settings")],
+            [_btn("📱 تعديل رقم الجوال", "adm:set:phone")],
+            [_btn("📝 تعديل رسالة الطلب", "adm:set:note")],
+            [_btn("🔙 القائمة الرئيسية", "m:main")],
         ]
+    )
+
+
+def check_status() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[_btn("🔄 تحقق من التفعيل", "acc:check")]]
     )
 
 

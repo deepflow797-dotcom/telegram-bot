@@ -64,7 +64,7 @@ async def test_full_payment_registration(db) -> None:
 async def test_duplicate_confirmation_registers_once(db) -> None:
     tenant = await setup_tenant(db)
     pending = await payments_repo.create_pending_payment(
-        db, tenant_id=tenant["id"], amount=Decimal("10000"), created_by=1
+        db, tenant_id=tenant["id"], amount=Decimal(10000), created_by=1
     )
     first = await payments_repo.register_payment(
         db, pending_id=pending["id"], registered_by=1, now=dt.datetime(2026, 1, 15, 10, 0)
@@ -116,7 +116,7 @@ async def test_payment_for_archived_tenant_is_rejected(db) -> None:
     tenant = await setup_tenant(db)
     await tenants_repo.archive_tenant(db, tenant["id"])
     pending = await payments_repo.create_pending_payment(
-        db, tenant_id=tenant["id"], amount=Decimal("10000"), created_by=1
+        db, tenant_id=tenant["id"], amount=Decimal(10000), created_by=1
     )
     result = await payments_repo.register_payment(
         db, pending_id=pending["id"], registered_by=1, now=dt.datetime(2026, 1, 15)
@@ -135,7 +135,7 @@ async def test_unknown_pending_payment(db) -> None:
 async def test_failed_registration_leaves_no_partial_state(db) -> None:
     tenant = await setup_tenant(db)
     pending = await payments_repo.create_pending_payment(
-        db, tenant_id=tenant["id"], amount=Decimal("5000"), created_by=1
+        db, tenant_id=tenant["id"], amount=Decimal(5000), created_by=1
     )
     # make the tenant disappear to force a failure after the pending row exists
     with pytest.raises(Exception):
@@ -166,8 +166,8 @@ async def test_payment_totals_by_currency(db) -> None:
     await pay(db, tenant, "5000", when=dt.datetime(2026, 2, 15, 8, 0))
     january = await payments_repo.totals_by_currency(
         db,
-        start=dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc),
-        end=dt.datetime(2026, 2, 1, tzinfo=dt.timezone.utc),
+        start=dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
+        end=dt.datetime(2026, 2, 1, tzinfo=dt.UTC),
     )
     assert january["MRU"][0] == Decimal("10000.00")
     assert january["MRU"][1] == 1
@@ -198,5 +198,5 @@ async def test_payment_amount_validation_in_db(db) -> None:
 
     with pytest.raises(pg_errors.CheckViolation):
         await payments_repo.create_pending_payment(
-            db, tenant_id=tenant["id"], amount=Decimal("0"), created_by=1
+            db, tenant_id=tenant["id"], amount=Decimal(0), created_by=1
         )

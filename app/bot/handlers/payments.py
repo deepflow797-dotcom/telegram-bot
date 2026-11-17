@@ -16,11 +16,15 @@ from app.bot.utils import (
     answer_callback,
     edit_or_send,
     is_cancel,
-    now as now_of,
     parse_int,
     send_long,
     skipped,
     to_html,
+)
+from app.bot.utils import (
+    now as now_of,
+)
+from app.bot.utils import (
     today as today_of,
 )
 from app.bot.views import payment_receipt, payment_success, preview_plan
