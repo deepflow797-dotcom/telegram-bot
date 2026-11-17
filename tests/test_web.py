@@ -97,21 +97,31 @@ async def test_webhook_rejects_invalid_json(web) -> None:
     assert response.status_code == 400
 
 
-async def test_unauthorized_user_is_rejected(web) -> None:
+async def test_first_start_gets_a_free_trial(web, db) -> None:
+    """A brand-new Telegram account is activated on a 7-day trial, not blocked."""
+    from app.db import platform
+
     _, client, session = web
+    user_id = 999888777
     response = await client.post(
         "/api/telegram/webhook",
-        json=message_update("/start", user_id=999888777),
+        json=message_update("/start", user_id=user_id),
         headers=WEBHOOK_HEADERS,
     )
     assert response.status_code == 200
     assert response.json() == {"ok": True}
+
+    account = await platform.get_account_by_telegram(db, user_id)
+    assert account is not None
+    assert account["status"] == platform.STATUS_ACTIVE
+    assert account["plan"] == platform.PLAN_TRIAL
+    assert platform.days_left(account, platform.dt.date.today()) == 7
+
     texts = session.sent_texts()
-    assert len(texts) == 2  # owner notification + subscription screen
-    assert "طلب تفعيل جديد" in texts[0]
-    assert "بالاشتراك" in texts[1] or "غير مفعّل" in texts[1]
-    assert "22222222" in texts[1]  # owner contact is shown
-    assert "مرحباً" not in texts[1]
+    assert any("تجربة مجانية لمدة 7 أيام" in text for text in texts)
+    assert any("22222222" in text for text in texts)  # owner contact
+    assert any("حساب جديد بدأ التجربة" in text for text in _texts_to(session, OWNER_ID))
+    assert any("مرحباً" in text for text in _texts_to(session, user_id))
 
 
 async def test_owner_start_command(web) -> None:
@@ -247,7 +257,10 @@ def _user(user_id: int) -> User:
 
 
 async def test_middleware_blocks_foreign_user(db, settings) -> None:
-    """An unknown user only gets the subscription screen; no handler runs."""
+    """With the trial switched off, an unknown user only gets the request screen."""
+    from app.db import platform
+
+    await platform.set_platform_setting(db, "trial_days", "0")
     from app.bot.dispatcher import build_bot
     from app.bot.middlewares import AccessMiddleware
     from tests.fake_bot import FakeSession
@@ -407,6 +420,7 @@ async def test_new_customer_request_is_approved_end_to_end(web, db) -> None:
     from app.db.context import use_account
     from app.db.repository import list_buildings
 
+    await platform.set_platform_setting(db, "trial_days", "0")
     _, client, session = web
     customer_id = 555111222
 
@@ -419,7 +433,7 @@ async def test_new_customer_request_is_approved_end_to_end(web, db) -> None:
 
     owner_texts = _texts_to(session, OWNER_ID)
     assert any("طلب تفعيل جديد" in text for text in owner_texts)
-    assert f"adm:ok:" in str(session.calls[0][1])
+    assert "adm:ok:" in str(session.calls[0][1])
 
     customer_texts = _texts_to(session, customer_id)
     assert customer_texts and "22222222" in customer_texts[0]
@@ -461,6 +475,7 @@ async def test_new_customer_request_is_approved_end_to_end(web, db) -> None:
 async def test_rejected_customer_cannot_use_the_bot(web, db) -> None:
     from app.db import platform
 
+    await platform.set_platform_setting(db, "trial_days", "0")
     _, client, session = web
     customer_id = 555333444
 
@@ -490,3 +505,63 @@ async def test_rejected_customer_cannot_use_the_bot(web, db) -> None:
     assert texts
     assert all("مرحباً" not in text for text in texts)
     assert any("رفض" in text for text in texts)
+
+
+async def test_owner_sets_trial_days_from_the_bot(web, db) -> None:
+    """Owner → 📞 بيانات التواصل → 🎁 مدة التجربة → sends a number."""
+    from app.db import platform
+
+    _, client, session = web
+
+    opened = await client.post(
+        "/api/telegram/webhook",
+        json=callback_update("adm:set:trial", update_id=401),
+        headers=WEBHOOK_HEADERS,
+    )
+    assert opened.status_code == 200
+    assert any("عدد أيام التجربة" in text for text in _texts_to(session, OWNER_ID))
+
+    saved = await client.post(
+        "/api/telegram/webhook",
+        json=message_update("14", update_id=402),
+        headers=WEBHOOK_HEADERS,
+    )
+    assert saved.status_code == 200
+    assert await platform.get_trial_days(db) == 14
+
+    session.calls.clear()
+    await client.post(
+        "/api/telegram/webhook",
+        json=message_update("/start", user_id=555999111, update_id=403),
+        headers=WEBHOOK_HEADERS,
+    )
+    account = await platform.get_account_by_telegram(db, 555999111)
+    assert platform.days_left(account, platform.dt.date.today()) == 14
+    assert any("14 أيام" in text for text in _texts_to(session, 555999111))
+
+
+async def test_owner_rejects_invalid_trial_days(web, db) -> None:
+    from app.db import platform
+
+    _, client, session = web
+    await client.post(
+        "/api/telegram/webhook",
+        json=callback_update("adm:set:trial", update_id=411),
+        headers=WEBHOOK_HEADERS,
+    )
+    session.calls.clear()
+    await client.post(
+        "/api/telegram/webhook",
+        json=message_update("خمسة", update_id=412),
+        headers=WEBHOOK_HEADERS,
+    )
+    assert await platform.get_trial_days(db) == 7
+    assert any("رقماً بين" in text for text in _texts_to(session, OWNER_ID))
+
+    session.calls.clear()
+    await client.post(
+        "/api/telegram/webhook",
+        json=message_update("999", update_id=413),
+        headers=WEBHOOK_HEADERS,
+    )
+    assert await platform.get_trial_days(db) == 7

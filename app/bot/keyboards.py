@@ -58,7 +58,10 @@ def main_inline() -> InlineKeyboardMarkup:
         [_btn("🔎 البحث", "m:search"), _btn("⚙️ الإعدادات", "m:settings")],
     ]
     if owner_menu():
-        rows.append([_btn("📥 طلبات الاشتراك", "m:requests"), _btn("📞 بيانات التواصل", "m:contact")])
+        rows.append([_btn("📥 طلبات الاشتراك", "m:requests"), _btn("👥 الحسابات", "m:accounts")])
+        rows.append(
+            [_btn("📞 بيانات التواصل", "m:contact"), _btn("🎁 التجربة المجانية", "m:trial")]
+        )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -105,6 +108,16 @@ def contact_menu() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [_btn("📱 تعديل رقم الجوال", "adm:set:phone")],
             [_btn("📝 تعديل رسالة الطلب", "adm:set:note")],
+            [_btn("🎁 مدة التجربة المجانية", "adm:set:trial")],
+            [_btn("🔙 القائمة الرئيسية", "m:main")],
+        ]
+    )
+
+
+def trial_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [_btn("✏️ تغيير مدة التجربة", "adm:set:trial")],
             [_btn("🔙 القائمة الرئيسية", "m:main")],
         ]
     )

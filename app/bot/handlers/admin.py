@@ -39,7 +39,9 @@ def _account_line(account: dict, today_date: dt.date) -> str:
     expiry = ""
     if paid:
         expiry = f" — ينتهي: {paid}" + (f" ({left} يوم)" if left is not None else "")
-    return f"#{account['id']} {who}{handle} — {label}{expiry}"
+    plan = account.get("plan")
+    tag = " 🎁" if plan == platform.PLAN_TRIAL else ""
+    return f"#{account['id']} {who}{handle} — {label}{tag}{expiry}"
 
 
 async def _requests_payload(db, cfg) -> tuple[str, object]:
@@ -68,10 +70,15 @@ async def _accounts_payload(db, cfg) -> tuple[str, object]:
 
 async def _contact_payload(db) -> str:
     settings = await platform.get_platform_settings(db)
+    trial = platform.trial_days_from(settings)
+    trial_line = "🎁 التجربة المجانية: <b>متوقفة</b> (كل حساب جديد يصل كطلب)"
+    if trial > 0:
+        trial_line = f"🎁 التجربة المجانية لحساب جديد: <b>{trial}</b> يوم"
     return (
         f"{texts.CONTACT_TITLE}\n\n"
         f"📱 رقم الجوال: <code>{html.escape(settings.get('owner_phone', ''))}</code>\n\n"
-        f"📝 رسالة الطلب:\n{html.escape(settings.get('contact_note', ''))}"
+        f"📝 رسالة الطلب:\n{html.escape(settings.get('contact_note', ''))}\n\n"
+        f"{trial_line}"
     )
 
 
@@ -121,6 +128,27 @@ async def cb_contact(callback: CallbackQuery, db, cfg, is_owner: bool = False) -
         await callback.answer(_denied(), show_alert=True)
         return
     await edit_or_send(callback, await _contact_payload(db), kb.contact_menu())
+
+
+def _trial_payload(settings: dict) -> str:
+    days = platform.trial_days_from(settings)
+    if days > 0:
+        status = f"مفعّلة: <b>{days}</b> يوم لكل حساب جديد."
+        hint = "الحساب الجديد يفتح البوت فوراً ويجرّب كل المزايا، وبعد {d} يوم يتوقف تلقائياً حتى التجديد."
+        hint = hint.format(d=days)
+    else:
+        status = "<b>متوقفة</b> (0 يوم)."
+        hint = "كل حساب جديد يظهر لك كطلب، وأنت من يفعّله أو يرفضه."
+    return f"{texts.TRIAL_TITLE}\n\n🎁 الحالة: {status}\n\n{hint}"
+
+
+@router.callback_query(F.data == "m:trial")
+async def cb_trial(callback: CallbackQuery, db, is_owner: bool = False) -> None:
+    if not is_owner:
+        await callback.answer(_denied(), show_alert=True)
+        return
+    settings = await platform.get_platform_settings(db)
+    await edit_or_send(callback, _trial_payload(settings), kb.trial_menu())
 
 
 # ---------------------------------------------------------------------------
@@ -266,6 +294,33 @@ async def save_phone(message: Message, state: FSMContext, db, is_owner: bool = F
     await platform.set_platform_setting(db, "owner_phone", value)
     await state.clear()
     await message.answer(texts.CONTACT_SAVED, reply_markup=kb.contact_menu())
+
+
+@router.callback_query(F.data == "adm:set:trial")
+async def ask_trial(callback: CallbackQuery, state: FSMContext, is_owner: bool = False) -> None:
+    if not is_owner:
+        await callback.answer(_denied(), show_alert=True)
+        return
+    await state.set_state(ContactForm.trial)
+    await callback.answer()
+    await edit_or_send(callback, texts.ASK_TRIAL_DAYS, kb.contact_menu())
+
+
+@router.message(ContactForm.trial)
+async def save_trial(message: Message, state: FSMContext, db, is_owner: bool = False) -> None:
+    if not is_owner:
+        await message.answer(_denied())
+        return
+    raw = (message.text or "").strip()
+    if not raw.isdigit() or int(raw) > platform.MAX_TRIAL_DAYS:
+        await message.answer(texts.INVALID_TRIAL_DAYS)
+        return
+    days = await platform.set_trial_days(db, int(raw))
+    await state.clear()
+    await message.answer(
+        texts.TRIAL_SAVED.format(days=days), reply_markup=kb.contact_menu()
+    )
+    await message.answer(await _contact_payload(db), reply_markup=kb.contact_menu())
 
 
 @router.callback_query(F.data == "adm:set:note")

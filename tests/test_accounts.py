@@ -85,3 +85,54 @@ async def test_owner_account_is_bound_to_the_owner_telegram_id(db) -> None:
     assert account["id"] == platform.OWNER_ACCOUNT_ID
     assert account["telegram_id"] == 999111222
     assert account["status"] == platform.STATUS_ACTIVE
+
+
+async def test_free_trial_starts_active_and_freezes_on_expiry(db) -> None:
+    account, is_new = await platform.start_trial(
+        db,
+        telegram_id=555444555,
+        display_name="تجربة",
+        username="trial_user",
+        days=7,
+        today=dt.date(2026, 1, 1),
+    )
+    assert is_new is True
+    assert account["status"] == platform.STATUS_ACTIVE
+    assert account["plan"] == platform.PLAN_TRIAL
+    assert account["paid_until"] == dt.date(2026, 1, 8)
+    assert platform.days_left(account, dt.date(2026, 1, 4)) == 4
+
+    # the trial account owns an empty dataset like any other customer
+    with use_account(account["id"]):
+        assert await list_buildings(db) == []
+
+    # once the trial is over the account freezes (data untouched)
+    assert platform.effective_status(account, dt.date(2026, 1, 20)) == platform.STATUS_FROZEN
+    assert await platform.get_account(db, account["id"]) is not None
+
+
+async def test_starting_again_does_not_restart_the_trial(db) -> None:
+    first, _ = await platform.start_trial(
+        db, telegram_id=555666777, display_name="عميل", username=None, days=7
+    )
+    again, is_new = await platform.start_trial(
+        db, telegram_id=555666777, display_name="عميل", username=None, days=7
+    )
+    assert is_new is False
+    assert again["id"] == first["id"]
+    assert again["paid_until"] == first["paid_until"]
+
+
+async def test_trial_length_is_a_platform_setting(db) -> None:
+    assert await platform.get_trial_days(db) == 7  # default
+
+    await platform.set_trial_days(db, 21)
+    assert await platform.get_trial_days(db) == 21
+
+    account, _ = await platform.start_trial(
+        db, telegram_id=555777888, display_name="21", username=None
+    )
+    assert platform.days_left(account, dt.date.today()) == 21
+
+    await platform.set_trial_days(db, 0)  # trial disabled -> request flow
+    assert await platform.get_trial_days(db) == 0

@@ -424,16 +424,22 @@ The bot is a product, not a personal tool: one deployment serves many customers.
 
 | Step | What happens |
 | --- | --- |
-| Someone presses `/start` | a row is created in `accounts` with status `pending`; the owner gets a notification with the applicant's name, username, Telegram id and **✅ 30 / ✅ 90 days / ❌ reject** buttons |
-| Applicant's screen | owner phone (`22222222` by default) + the request note (*"send your username"*) + a 🔄 check button |
+| Someone presses `/start` for the first time | a **free trial** starts automatically (7 days by default): the account becomes `active`, its own empty `acct_<id>` schema is provisioned, and the owner is notified with **upgrade 30 / 90 days / pause** buttons |
+| Trial screen | the customer sees the trial length, its end date and the owner's phone, and starts working immediately |
+| Trial switched off (`trial_days = 0`) | a new account instead becomes a `pending` request; the owner gets the applicant's name, username and Telegram id with **✅ 30 / ✅ 90 days / ❌ reject** buttons, and the applicant only sees the contact screen |
 | Owner approves | the customer's own `acct_<id>` schema is provisioned **empty**, `paid_until` is set, and the customer receives an activation message |
 | Owner rejects | the applicant sees a rejection screen; nothing is provisioned |
 | Subscription ends | status becomes `frozen` automatically (`effective_status`): no edits, a renewal screen with the contact number, **all data kept** |
 | Renewal | the owner extends from `📥 طلبات الاشتراك` / `👤 الحسابات` — the account is active again with the same data |
 
 * Daily reports run per account: `/api/cron/daily-report` loops over the active
-  accounts and sends each owner/client their own report for their own dataset.
-* The owner edits the contact phone and the request note from inside the bot
-  (`📞 بيانات التواصل`), stored in `public.platform_settings`.
+  accounts (trials included) and sends each owner/client their own report for
+  their own dataset.
+* The owner edits the contact phone, the request note **and the trial length**
+  from inside the bot (`📞 بيانات التواصل` → `🎁 مدة التجربة المجانية`, or the
+  `🎁 التجربة المجانية` button), stored in `public.platform_settings`
+  (`trial_days`, 0–365, `0` = trial off → request flow).
+* Changing the trial length only affects accounts created afterwards; existing
+  trials keep their dates, and `➕ تمديد` extends from the current end date.
 * Account 1 is always the platform owner (`TELEGRAM_OWNER_ID`); it never
   expires and never sees a subscription screen.

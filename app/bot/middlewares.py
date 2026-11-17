@@ -70,7 +70,10 @@ class AccessMiddleware(BaseMiddleware):
     # -- helpers -----------------------------------------------------------
     async def _contact_text(self, account: dict) -> str:
         settings = await platform.get_platform_settings(self.db)
-        return texts.PENDING_REQUEST.format(
+        template = texts.PENDING_REQUEST
+        if platform.trial_days_from(settings) == 0:
+            template = texts.TRIAL_DISABLED
+        return template.format(
             phone=html.escape(settings.get("owner_phone", "")),
             note=html.escape(settings.get("contact_note", "")),
             account_id=account["id"],
@@ -86,6 +89,48 @@ class AccessMiddleware(BaseMiddleware):
                 await event.answer(text, reply_markup=reply_markup)
         except Exception:
             logger.exception("could not deliver the access screen")
+
+    async def _send_trial_started(self, event: TelegramObject, account: dict, days: int) -> None:
+        settings = await platform.get_platform_settings(self.db)
+        text = texts.TRIAL_STARTED.format(
+            days=days,
+            until=account.get("paid_until") or "",
+            phone=html.escape(settings.get("owner_phone", "")),
+        )
+        try:
+            await event.answer(text)
+        except Exception:
+            logger.exception("could not deliver the trial screen")
+
+    async def _notify_owner_trial(self, data: dict, account: dict, user: User, days: int) -> None:
+        bot = data.get("bot")
+        if bot is None:
+            return
+        who = html.escape(account.get("display_name") or user.full_name)
+        handle = (
+            f"@{html.escape(account['username'])}" if account.get("username") else "بدون يوزر"
+        )
+        text = (
+            "🎁 <b>حساب جديد بدأ التجربة المجانية</b>\n\n"
+            f"الاسم: {who}\n"
+            f"اليوزر: {handle}\n"
+            f"رقم الحساب: <code>{account['id']}</code>\n"
+            f"مدة التجربة: {days} يوم — تنتهي: {account.get('paid_until')}"
+        )
+        try:
+            await bot.send_message(
+                self.cfg.owner_id,
+                text,
+                reply_markup=_keyboard(
+                    [
+                        [("✅ ترقية 30 يوم", f"adm:ok:{account['id']}:30")],
+                        [("✅ ترقية 90 يوم", f"adm:ok:{account['id']}:90")],
+                        [("⏸ إيقاف", f"adm:freeze:{account['id']}")],
+                    ]
+                ),
+            )
+        except Exception:
+            logger.exception("could not notify the owner about a new trial")
 
     async def _notify_owner_new_request(self, data: dict, account: dict, user: User) -> None:
         bot = data.get("bot")
@@ -135,14 +180,27 @@ class AccessMiddleware(BaseMiddleware):
             else:
                 account = await platform.get_account_by_telegram(self.db, user.id)
                 if account is None:
-                    account, is_new = await platform.register_request(
-                        self.db,
-                        telegram_id=user.id,
-                        display_name=user.full_name,
-                        username=user.username,
-                    )
-                    if is_new:
-                        await self._notify_owner_new_request(data, account, user)
+                    trial_days = await platform.get_trial_days(self.db)
+                    if trial_days > 0:
+                        account, is_new = await platform.start_trial(
+                            self.db,
+                            telegram_id=user.id,
+                            display_name=user.full_name,
+                            username=user.username,
+                            days=trial_days,
+                        )
+                        if is_new and account is not None:
+                            await self._send_trial_started(event, account, trial_days)
+                            await self._notify_owner_trial(data, account, user, trial_days)
+                    else:
+                        account, is_new = await platform.register_request(
+                            self.db,
+                            telegram_id=user.id,
+                            display_name=user.full_name,
+                            username=user.username,
+                        )
+                        if is_new:
+                            await self._notify_owner_new_request(data, account, user)
         except Exception:
             logger.exception("access middleware failed to resolve the account")
             await self._send_screen(event, texts.ACCESS_TEMPORARY_ERROR)

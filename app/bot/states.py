@@ -52,3 +52,4 @@ class EditForm(StatesGroup):
 class ContactForm(StatesGroup):
     phone = State()
     note = State()
+    trial = State()

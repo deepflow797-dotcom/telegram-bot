@@ -1,10 +1,12 @@
-"""Accounts, subscription requests and platform settings (multi-account layer).
+"""Accounts, subscriptions, free trials and platform settings.
 
 The platform owner (``TELEGRAM_OWNER_ID``) is always account 1. Any other
-Telegram account that starts the bot becomes a *request* with status
-``pending`` until the owner approves it. Approving an account provisions a new
-empty dataset (its own PostgreSQL schema), so every customer starts from
-scratch and never sees the owner's data.
+Telegram account that starts the bot gets a **free trial** (7 days by default,
+configurable by the owner) with its own empty PostgreSQL schema. When the trial
+or the subscription ends the account is frozen — data kept, renewal screen.
+
+If the owner sets the trial to 0 days, a new account instead becomes a
+*request* with status ``pending`` that the owner approves or rejects.
 """
 
 from __future__ import annotations
@@ -33,8 +35,17 @@ STATUS_LABELS = {
     STATUS_REJECTED: "مرفوض",
 }
 
+PLAN_OWNER = "owner"
+PLAN_TRIAL = "trial"
+PLAN_STANDARD = "standard"
+
+TRIAL_DAYS_KEY = "trial_days"
+DEFAULT_TRIAL_DAYS = 7
+MAX_TRIAL_DAYS = 365
+
 PLATFORM_DEFAULTS = {
     "owner_phone": "22222222",
+    TRIAL_DAYS_KEY: str(DEFAULT_TRIAL_DAYS),
     "contact_note": (
         "أرسل اسم المستخدم (اليوزر) الخاص بك لهذا الرقم، وسيتم تفعيل البوت لك، "
         "وستصلك رسالة تأكيد."
@@ -63,6 +74,26 @@ async def set_platform_setting(db: Database, key: str, value: str) -> None:
         """,
         (key, str(value)),
     )
+
+
+def trial_days_from(settings: dict[str, str]) -> int:
+    """Trial length in days (0 disables the trial and enables the request flow)."""
+    raw = str(settings.get(TRIAL_DAYS_KEY, DEFAULT_TRIAL_DAYS)).strip()
+    try:
+        days = int(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_TRIAL_DAYS
+    return max(0, min(days, MAX_TRIAL_DAYS))
+
+
+async def get_trial_days(db: Database) -> int:
+    return trial_days_from(await get_platform_settings(db))
+
+
+async def set_trial_days(db: Database, days: int) -> int:
+    value = max(0, min(int(days), MAX_TRIAL_DAYS))
+    await set_platform_setting(db, TRIAL_DAYS_KEY, str(value))
+    return value
 
 
 # ---------------------------------------------------------------------------
@@ -151,6 +182,49 @@ async def list_accounts(
     )
 
 
+async def start_trial(
+    db: Database,
+    *,
+    telegram_id: int,
+    display_name: str | None,
+    username: str | None,
+    days: int | None = None,
+    today: dt.date | None = None,
+) -> tuple[dict | None, bool]:
+    """Activate a brand-new account on a free trial; returns ``(account, is_new)``."""
+    existing = await get_account_by_telegram(db, telegram_id)
+    if existing is not None:
+        return existing, False
+
+    length = await get_trial_days(db) if days is None else max(0, int(days))
+    today = today or dt.date.today()
+    paid_until = today + dt.timedelta(days=length)
+
+    row = await db.fetch_one(
+        """
+        INSERT INTO accounts (telegram_id, display_name, username, status, plan,
+                              paid_until, approved_at, last_seen_at)
+        VALUES (%s, %s, %s, 'active', %s, %s, now(), now())
+        ON CONFLICT (telegram_id) DO UPDATE
+            SET display_name = EXCLUDED.display_name,
+                username = EXCLUDED.username,
+                last_seen_at = now()
+        RETURNING *
+        """,
+        (telegram_id, display_name, username, PLAN_TRIAL, paid_until),
+    )
+    if row is None:
+        return None, False
+
+    if row["status"] != STATUS_ACTIVE or row["paid_until"] != paid_until:
+        # a row existed concurrently / already known: never overwrite it
+        return row, False
+
+    await db.execute("SELECT app_provision_account(%s)", (row["id"],))
+    log_event(logger, "free trial started", account_id=row["id"], days=length)
+    return row, True
+
+
 async def approve_account(
     db: Database, account_id: int, *, days: int = 30, today: dt.date | None = None
 ) -> dict | None:
@@ -169,11 +243,11 @@ async def approve_account(
     await db.execute(
         """
         UPDATE accounts
-        SET status = 'active', paid_until = %s, plan = COALESCE(%s, plan),
+        SET status = 'active', paid_until = %s, plan = %s,
             approved_at = now(), updated_at = now()
         WHERE id = %s
         """,
-        (paid_until, "standard", account_id),
+        (paid_until, PLAN_STANDARD, account_id),
     )
     log_event(logger, "account approved", account_id=account_id, paid_until=str(paid_until))
     return await get_account(db, account_id)
