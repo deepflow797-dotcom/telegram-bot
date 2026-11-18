@@ -354,13 +354,6 @@ The writer lives in `app/core/xlsx.py` and has **no third-party dependency** (a
 zip plus a handful of OOXML parts), keeping the Vercel bundle small; `openpyxl`
 is only a dev dependency, used by the tests to read the generated file back.
 
-### Downloading the guide
-
-`GET /api/guide.pdf` returns the Arabic PDF guide (`docs/guides/bot-guide-ar.pdf`).
-`vercel.json` bundles `docs/guides/**` with the function, so the file can be
-downloaded (and re-sent) from a phone without cloning the repo. Rebuild it with
-`python scripts/build_guide.py --date YYYY-MM-DD`.
-
 ### Archiving vs permanent delete
 
 Cards carry two destructive actions:
