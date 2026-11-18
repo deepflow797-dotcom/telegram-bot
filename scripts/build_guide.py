@@ -321,6 +321,9 @@ def decorate(canvas, doc) -> None:
     canvas.restoreState()
 
 
+EDITION_DATE = dt.date.today()
+
+
 def cover() -> list[Flowable]:
     story: list[Flowable] = [Spacer(1, 16 * mm)]
     story.append(Paragraph(ar("بوت إدارة الإيجارات"), STYLES["title"]))
@@ -341,7 +344,14 @@ def cover() -> list[Flowable]:
             STYLES["body"],
         )
     )
-    story.append(Spacer(1, 8 * mm))
+    story.append(Spacer(1, 2 * mm))
+    story.append(
+        note(
+            "هذا الإصدار يشمل: تصدير كل البيانات في ملف إكسل، والحذف النهائي إلى جانب الأرشفة، "
+            "وتحكّم كل حساب في الحذف والأرشفة من الإعدادات."
+        )
+    )
+    story.append(Spacer(1, 6 * mm))
 
     qr_path = GUIDES / "bot-qr-ar.png"
     if qr_path.exists():
@@ -357,7 +367,7 @@ def cover() -> list[Flowable]:
             ["رابط الفتح", BOT_URL],
             ["رقم التواصل", "22222222 (قابل للتغيير من داخل البوت)"],
             ["التجربة المجانية", "7 أيام لكل حساب جديد (قابلة للتعديل)"],
-            ["إصدار الدليل", dt.date.today().isoformat()],
+            ["إصدار الدليل", EDITION_DATE.isoformat()],
         ],
         widths=[45 * mm, FRAME_WIDTH - 45 * mm],
     )
@@ -385,7 +395,7 @@ def contents() -> list[Flowable]:
         ["7", "شاشات المالك الثلاث (الطلبات، الحسابات، التواصل)"],
         ["8", "تجربة العميل خطوة بخطوة"],
         ["9", "العزل والأمان: كيف لا يرى عميل بيانات غيره"],
-        ["10", "التقرير اليومي لكل حساب"],
+        ["10", "التقرير اليومي وتصدير ملف إكسل"],
         ["11", "خريطة الأزرار والأوامر"],
         ["12", "أسئلة شائعة وأخطاء متوقعة"],
     ]
@@ -699,7 +709,16 @@ def build_story() -> list[Flowable]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Build the Arabic PDF guide")
     parser.add_argument("--out", default=str(GUIDES / "bot-guide-ar.pdf"))
+    parser.add_argument(
+        "--date",
+        default=None,
+        help="edition date stamped on the cover (defaults to today)",
+    )
     args = parser.parse_args(argv)
+
+    global EDITION_DATE
+    if args.date:
+        EDITION_DATE = dt.date.fromisoformat(args.date)
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)

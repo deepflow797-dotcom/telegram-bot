@@ -14,11 +14,12 @@ import datetime as dt
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from aiogram.types import Update
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from app.bot.dispatcher import build_bot, create_dispatcher, register_bot_commands
 from app.bot.utils import today as today_of
@@ -160,6 +161,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "webhook": "/api/telegram/webhook",
             "cron": "/api/cron/daily-report",
         }
+
+    @app.get("/api/guide.pdf")
+    async def guide_pdf() -> Any:
+        """The Arabic PDF guide, so it can be downloaded (and re-sent) from the phone."""
+        path = Path(__file__).resolve().parents[2] / "docs" / "guides" / "bot-guide-ar.pdf"
+        if not path.exists():
+            return JSONResponse(status_code=404, content={"error": "guide not bundled"})
+        return FileResponse(
+            path,
+            media_type="application/pdf",
+            filename="bot-guide-ar.pdf",
+            headers={"Content-Disposition": 'inline; filename="bot-guide-ar.pdf"'},
+        )
 
     @app.get("/api/health")
     async def health(request: Request) -> Any:

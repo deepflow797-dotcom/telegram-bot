@@ -553,3 +553,13 @@ async def test_owner_rejects_invalid_trial_days(web, db) -> None:
         headers=WEBHOOK_HEADERS,
     )
     assert await platform.get_trial_days(db) == 7
+
+
+async def test_guide_pdf_is_downloadable(web) -> None:
+    """The Arabic guide is bundled with the function and served as a real PDF."""
+    _, client, _ = web
+    response = await client.get("/api/guide.pdf")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF")
+    assert len(response.content) > 50_000
